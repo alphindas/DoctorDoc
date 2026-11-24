@@ -117,12 +117,13 @@ def engines(config_path: ConfigOption = None) -> None:
     from doctordoc.router import Router
 
     table = RichTable(title="DoctorDoc engines")
-    for column in ("engine", "license", "status", "install"):
+    for column in ("engine", "license", "status", "install", "note"):
         table.add_column(column)
     for row in Router(_load_config(config_path)).engine_report():
         ready = row["status"] == "ready"
         status = "[green]ready[/green]" if ready else f"[yellow]{escape(row['status'])}[/yellow]"
-        table.add_row(row["name"], row["license"], status, escape(row["install"]))
+        note = f"[yellow]{escape(row['note'])}[/yellow]" if row["note"] else ""
+        table.add_row(row["name"], row["license"], status, escape(row["install"]), note)
     out.print(table)
 
 

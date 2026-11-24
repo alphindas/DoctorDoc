@@ -30,6 +30,7 @@ class PaddleVlEngine(Engine):
     license = "Apache-2.0 (PaddleOCR, PaddlePaddle; model PaddleOCR-VL under Apache-2.0)"
     extra = "paddle"
     heavy = True
+    note = "experimental: needs 8+ GB RAM or a GPU"
 
     def __init__(self, config=None) -> None:
         super().__init__(config)

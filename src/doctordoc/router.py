@@ -103,6 +103,7 @@ class Router:
                     "license": engine.license,
                     "status": "ready" if reason is None else f"missing: {reason}",
                     "install": engine.install_hint,
+                    "note": engine.note,
                 }
             )
         return rows

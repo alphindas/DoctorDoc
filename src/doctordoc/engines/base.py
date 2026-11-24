@@ -24,6 +24,7 @@ class Engine(ABC):
     license: ClassVar[str]
     extra: ClassVar[str] = ""  # the pip extra that installs it, e.g. "ocr"
     heavy: ClassVar[bool] = False  # True if it loads a big model (only one heavy model at a time)
+    note: ClassVar[str] = ""  # a short warning shown by `doctordoc engines`, e.g. "experimental"
 
     def __init__(self, config: Config | None = None) -> None:
         self.config = config or Config()
