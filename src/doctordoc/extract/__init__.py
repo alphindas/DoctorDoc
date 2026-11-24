@@ -1,7 +1,7 @@
 """Field extraction (phase 2): fill a Pydantic schema from a document, with proof and checks."""
 
 from doctordoc.extract.extractor import extract, resolve_schema
-from doctordoc.extract.llm import LLMClient, LLMError
+from doctordoc.extract.llm import LLMClient, LLMError, list_models
 from doctordoc.extract.models import ExtractionResult, FieldResult, Issue, Source
 from doctordoc.extract.schemas import (
     BUILTIN_SCHEMAS,
@@ -38,6 +38,7 @@ __all__ = [
     "date_order",
     "extract",
     "in_range",
+    "list_models",
     "matches",
     "required",
     "resolve_schema",

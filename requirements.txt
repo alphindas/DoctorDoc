@@ -1,0 +1,3 @@
+# Dependencies for hosting the demo (Streamlit Community Cloud reads this file).
+# RapidOCR + native engines only: no Docling / PyTorch, so it fits on a small CPU machine.
+.[ui,ocr]

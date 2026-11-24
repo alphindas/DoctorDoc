@@ -120,3 +120,15 @@ class Document(BaseModel):
         from doctordoc.render import to_json
 
         return to_json(self, indent=indent)
+
+
+class EngineRun(BaseModel):
+    """One engine run ALONE on a whole file (used to compare engines side by side)."""
+
+    engine: str
+    status: str  # ok | empty | failed | timeout | skipped
+    reason: str = ""
+    pages: list[Page] = Field(default_factory=list)
+    quality: float | None = None  # text_quality of all the text it produced, 0..1
+    chars: int = 0  # non-space characters produced
+    seconds: float = 0.0

@@ -22,7 +22,7 @@ from doctordoc.detect import IMAGE_TYPES, FileInfo
 from doctordoc.engines import build_engines
 from doctordoc.engines.base import Engine
 from doctordoc.merge import merge_missing_blocks
-from doctordoc.models import Decision, Page, PageKind
+from doctordoc.models import Decision, EngineRun, Page, PageKind
 from doctordoc.quality import quality_report
 from doctordoc.triage import triage_pdf
 
@@ -85,6 +85,56 @@ class Router:
             result.pages = self._route_whole_file(data, info.file_type, None, result)
         result.decisions = self._decisions
         return result
+
+    def runnable_engines(self, info: FileInfo) -> list[str]:
+        """Names of installed engines that can read this kind of file (used by the compare tool)."""
+        return [
+            name
+            for name, engine in self.engines.items()
+            if engine.missing_reason() is None and _can_read(engine, info)
+        ]
+
+    def run_engine(self, name: str, data: bytes, info: FileInfo) -> EngineRun:
+        """Run ONE engine alone on the whole file: no triage, no fallback, no merging.
+
+        This is for comparing engines. It still has the time limit, and it never raises.
+        """
+        self._decisions, self._timed_out = [], set()
+        engine = self.engines.get(name)
+        if engine is None:
+            return EngineRun(engine=name, status="skipped", reason="unknown engine")
+        if (reason := engine.missing_reason()) is not None:
+            return EngineRun(engine=name, status="skipped", reason=f"not available: {reason}")
+        if not _can_read(engine, info):
+            return EngineRun(
+                engine=name, status="skipped", reason=f"does not handle {info.file_type} files"
+            )
+        count = max(1, info.page_count or 1) if info.file_type == "pdf" else 1
+        todo = list(range(1, count + 1)) if info.file_type == "pdf" else [WHOLE_FILE]
+        outcome = self._call(engine, data, info.file_type, None, todo)
+        if outcome is None:  # _call already wrote the reason into the log
+            last = self._decisions[-1]
+            return EngineRun(
+                engine=name, status=last.outcome, reason=last.reason, seconds=last.seconds
+            )
+        pages, seconds_each = outcome
+        seconds = round(seconds_each * len(todo), 3)
+        text = "\n\n".join(p.text for p in pages if p.text)
+        for page in pages:
+            page.engine = name
+            page.quality = round(quality_report(page.text).score, 3) if page.text else None
+        if not text.strip():
+            return EngineRun(
+                engine=name, status="empty", reason="no text in the output", seconds=seconds
+            )
+        return EngineRun(
+            engine=name,
+            status="ok",
+            pages=pages,
+            quality=round(quality_report(text).score, 3),
+            chars=len("".join(text.split())),
+            seconds=seconds,
+        )
 
     def release_all(self) -> None:
         """Free every engine's model memory."""
@@ -388,6 +438,18 @@ class Router:
 
 
 # ---------------------------------------------------------------------------- helpers
+
+
+def _can_read(engine: Engine, info: FileInfo) -> bool:
+    """Could this engine handle the file, for ANY kind of page? (Docling only takes digital
+    pages in the router, but for comparing we let it try whole PDFs.)"""
+    if info.file_type == "pdf":
+        return any(
+            engine.supports("pdf", kind)
+            for kind in (PageKind.DIGITAL, PageKind.MIXED, PageKind.SCANNED)
+        )
+    kind = PageKind.SCANNED if info.file_type in IMAGE_TYPES else None
+    return engine.supports(info.file_type, kind)
 
 
 def _is_better(new: _Candidate, old: _Candidate | None) -> bool:

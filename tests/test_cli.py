@@ -104,3 +104,46 @@ def test_paddle_result_mapping():
     ]
     assert blocks[0].level == 1 and blocks[2].table.rows == [["a", "b"]]
     assert blocks[0].bbox.x1 == 100.0  # pixels divided by scale -> PDF points
+
+
+def test_ui_command_starts_streamlit_with_the_upload_limit_and_the_config(monkeypatch, cfg_file):
+    import subprocess
+
+    seen = {}
+
+    def fake_call(command, env=None, cwd=None):
+        seen.update(command=command, env=env, cwd=cwd)
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", fake_call)
+    result = runner.invoke(app, ["ui", "--port", "8123", "-c", cfg_file])
+    assert result.exit_code == 0
+    command = seen["command"]
+    assert command[1:4] == ["-m", "streamlit", "run"] and command[4].endswith("ui/app.py")
+    assert "8123" in command and "200" in command  # port, and max_file_mb as the upload limit
+    assert seen["env"]["DOCTORDOC_UI_CONFIG"].endswith("doctordoc.yaml")
+
+
+def test_extract_json_uses_the_stable_report_shape(pdf, cfg_file, monkeypatch):
+    from doctordoc.extract.models import ExtractionResult, FieldResult
+
+    fake = ExtractionResult(
+        schema_name="Invoice",
+        model="m",
+        fields=[FieldResult(path="total", value=1.5, grounded=False, confidence=0.2)],
+        needs_review=["total"],
+    )
+    import doctordoc.extract as extract_module
+
+    monkeypatch.setattr(extract_module, "extract", lambda *a, **k: fake)
+    result = runner.invoke(app, ["extract", str(pdf), "-f", "json", "-c", cfg_file])
+    report = json.loads(result.output)
+    assert report["fields"][0] == {
+        "field": "total",
+        "value": 1.5,
+        "confidence": 0.2,
+        "grounded": False,
+        "page": None,
+        "source_text": None,
+    }
+    assert report["needs_review"] == ["total"] and report["validation_issues"] == []

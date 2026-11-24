@@ -30,7 +30,7 @@ paddle = ["paddleocr>=3.0", "paddlepaddle>=3.0"]  # Apache-2.0
 markitdown = ["markitdown[docx,pptx,xlsx]>=0.1"]  # MIT
 msg = ["olefile>=0.46"]  # BSD-2: read attachments of Outlook .msg files
 api = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
-ui = ["streamlit>=1.35"]
+ui = ["streamlit>=1.67"]  # tabs that remember the open tab (key + on_change)
 # Optional plugins with restrictive licenses -- read the README license table first.
 marker = ["marker-pdf"]   # model weights: revenue/funding limits for commercial use
 mineru = ["mineru"]       # custom license with conditions
@@ -54,6 +54,9 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["UP007", "UP045"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/doctordoc/ui/*" = ["E501"]  # long lines are HTML and CSS strings
 
 [tool.mypy]
 python_version = "3.10"

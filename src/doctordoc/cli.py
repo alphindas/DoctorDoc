@@ -170,7 +170,9 @@ def extract(
         str,
         typer.Option("--schema", "-s", help="invoice | receipt | drilling | form | module:Class"),
     ] = "invoice",
-    format: Annotated[str, typer.Option("--format", "-f", help="table or json.")] = "table",
+    format: Annotated[
+        str, typer.Option("--format", "-f", help="table, or json (the stable report shape).")
+    ] = "table",
     model: Annotated[
         Optional[str], typer.Option(help="LLM model name (default llama3.2:3b).")
     ] = None,  # noqa: UP007
@@ -192,7 +194,7 @@ def extract(
         config.llm.provider = provider  # type: ignore[assignment]
     result = run_extract(file, schema, config)
     if format == "json":
-        out.print(result.to_json(), markup=False, highlight=False)
+        out.print(result.to_report_json(), markup=False, highlight=False)
     else:
         _print_extraction(result)
     for warning in result.warnings:
@@ -233,6 +235,44 @@ def _print_extraction(result) -> None:
         out.print(f"[bold red]needs review:[/bold red] {', '.join(result.needs_review)}")
     elif not result.error:
         out.print("[bold green]nothing needs review[/bold green]")
+
+
+@app.command()
+def ui(
+    port: Annotated[int, typer.Option(help="Port for the web page.")] = 8501,
+    config_path: ConfigOption = None,
+) -> None:
+    """Open the web UI: upload files, see the router's choices, extract fields, compare engines."""
+    import importlib.util
+    import os
+    import subprocess
+    import sys
+
+    if importlib.util.find_spec("streamlit") is None:
+        err.print('[red]The UI needs Streamlit.[/red] Install it with: pip install "doctordoc[ui]"')
+        raise typer.Exit(code=1)
+    from doctordoc.ui import app as ui_app
+
+    config = _load_config(config_path)
+    env = dict(os.environ)
+    if config_path:
+        env["DOCTORDOC_UI_CONFIG"] = str(config_path.resolve())
+    # Streamlit reads .streamlit/config.toml (the theme) from the folder it starts in.
+    # In a checkout that is the repo root; elsewhere Streamlit's own defaults plus our CSS apply.
+    root = Path(ui_app.__file__).resolve().parents[3]
+    command = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        ui_app.__file__,
+        "--server.port",
+        str(port),
+        "--server.maxUploadSize",
+        str(max(1, int(config.max_file_mb))),
+    ]
+    cwd = root if (root / ".streamlit" / "config.toml").exists() else None
+    raise typer.Exit(code=subprocess.call(command, env=env, cwd=cwd))
 
 
 if __name__ == "__main__":

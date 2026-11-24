@@ -2,7 +2,7 @@
 
 **One door for any document: it works out what the file is, picks the best engine for each page, and returns clean Markdown/JSON plus fields you can trace back to the source text.**
 
-> Status: early (v0.1). Parsing + router and field extraction work. The UI, the benchmark, the
+> Status: early (v0.1). Parsing + router, field extraction and a web UI work. The benchmark, the
 > API and the Docker image are next. Apache-2.0, fully local by default.
 
 ## 30-second quickstart
@@ -15,6 +15,7 @@ uv pip install -e ".[ocr,docling,markitdown]"   # extras are optional: see `doct
 doctordoc parse report.pdf --explain            # Markdown + the router's decision log
 doctordoc triage report.pdf                     # what kind is each page?
 doctordoc engines                               # which engines are installed, and their licenses
+doctordoc ui                                    # web page: upload files, try the samples in examples/
 
 ollama pull llama3.2:3b                         # for field extraction (local, about 2 GB)
 doctordoc extract invoice.pdf --schema invoice
@@ -49,6 +50,64 @@ flowchart LR
     DOC --> EX[Extract fields with a local LLM]
     EX --> GR[Grounding + validation<br/>confidence + needs_review]
 ```
+
+## Web UI (`doctordoc ui`)
+
+```bash
+uv pip install -e ".[ui]"        # Streamlit
+doctordoc ui                     # opens http://localhost:8501; pass --config my.yaml to change settings
+```
+
+Pure Python (Streamlit), no JavaScript build. Upload one or many files, or a ZIP; every file is
+written to a temporary folder, parsed, and deleted: nothing is stored. Four tabs:
+
+- **Parse**: detected type (and a warning if the extension lies), one chip per page (digital,
+  scanned, mixed, garbled, blank) with page navigation, the page picture next to the extracted
+  blocks (real tables), a tree of the files inside a ZIP or email, and the **Output** panel
+  (rendered Markdown, raw Markdown, JSON, tables; copy and download; one ZIP of everything for batches).
+- **Router log**: why each engine was used, rejected, skipped or failed, with quality and seconds.
+- **Extract**: pick a schema (invoice, receipt, drilling report, generic form); every field with
+  confidence, grounded or not, and page; click **Source** to see the exact text it came from.
+- **Compare engines**: runs each installed engine alone on the same file and shows them side by
+  side, with time and text-quality score, and marks the engine the router chose.
+
+The sidebar has the OCR engine (Auto, or force one), **Local only (private)** (on by default; turning
+it off allows the cloud fallback and shows a warning that pages would leave your machine), the
+local Ollama model, the mixed-page merge switch and an on/off list of engines. To host a small public
+demo see [docs/deploy-demo.md](docs/deploy-demo.md). The look is from
+[docs/design/mockup.png](docs/design/mockup.png), a design mockup (made-up data, not a screenshot).
+
+## Extraction output format
+
+`doctordoc extract FILE --format json` prints this, the Extract tab downloads the same thing, and
+the future API will return it. One entry per field, then the review list and the problems:
+
+```json
+{
+  "schema": "Invoice",
+  "model": "llama3.2:3b",
+  "fields": [
+    {"field": "invoice_number", "value": "RI-2025-1047", "confidence": 1.0,
+     "grounded": true, "page": 1, "source_text": "RI-2025-1047"},
+    {"field": "currency", "value": "USD", "confidence": 0.25,
+     "grounded": false, "page": null, "source_text": null},
+    {"field": "total", "value": 40000.0, "confidence": 0.95,
+     "grounded": true, "page": 1, "source_text": "40,000.00"}
+  ],
+  "needs_review": ["currency"],
+  "validation_issues": [],
+  "error": null
+}
+```
+
+This is a real run (shortened to three fields) on `examples/invoice_digital.pdf` with `llama3.2:3b`.
+Note `currency`: the model said `USD`, but the invoice never states a currency, so it is not
+grounded, its confidence is low, and it is on the review list. A validation issue looks like
+`{"field": "total", "rule": "required", "message": "'total' is required but empty", "severity": "error"}`.
+
+`field` is a path (`line_items[0].amount` for list items). `grounded: false` means the value is
+not in the document text (the model made it up): `page` and `source_text` are then `null`.
+`validation_issues[].severity` is `error` or `warning`. `error` is `null` unless extraction failed.
 
 ## How the router decides
 
@@ -113,6 +172,12 @@ Honest list, from testing on synthetic documents so far:
 - **PaddleOCR-VL is experimental.** It is written against the library's source but is not proven here. On a machine with about 6 GB of RAM and no GPU build of PaddlePaddle, the model did not fit in memory (the process was killed after loading the weights). It is off by default on CPU. It needs 8+ GB of RAM or a GPU build of PaddlePaddle.
 - **Grounding is not proof of correctness.** Every extracted value is checked against the document text, so the model cannot invent a number that is not there. But a value that is copied from the text can still sit in the wrong field (for example the due date put into "invoice date"). `needs_review` lowers that risk; it does not remove it.
 - **Docling is not clearly better yet.** It is the default for digital PDFs because it finds tables, but in our tests it sometimes merges separate lines into one paragraph and splits inline bold into separate paragraphs, where the plain `pdf_text` engine did better. That is why HTML defaults to `native`. The Phase 3 benchmark will decide if "Docling first" is right for digital PDFs.
+- **The "text quality" score catches junk text, not wrong text.** A scan rotated by 90 degrees is read in a scrambled order and still scores 1.00; Tesseract dropped a whole line from a clean PDF and also scored 1.00. Do not read a high score as "correct". The Compare tab exists to see this with your own eyes.
+- OCR reads a phone photo mostly well but can swap look-alike characters (`RI-2025-1047` came out as `R1-2025-1047`) and mix up the order of address and table lines.
+- Docling puts a PDF's title block after the body in one of our samples (the vendor name appeared at the end). Reading order is not always right.
+- Excel formulas without a saved result (a file written by a script, not saved by Excel) read as empty cells.
+- The UI "Copy" button opens a small box with Streamlit's own copy icon (two clicks), not a one-click button. The UI was checked in Chromium only, and not on a phone.
+- Engine comparison and the page picture work for uploads and for files directly inside a ZIP or email, not for deeper nesting.
 - OCR engines sometimes glue words together across wide gaps (for example `08:30-24:00Drilled`). Grounding tolerates this, but the Markdown shows it.
 - Field extraction uses a small local model (`llama3.2:3b` by default) and was tested on a handful of synthetic documents. It is not benchmarked yet.
 - `.msg` (Outlook) attachment reading is untested because there was no sample file.

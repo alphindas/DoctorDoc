@@ -257,3 +257,61 @@ def test_openai_protocol_falls_back_to_json_mode_when_schema_is_refused():
     )
     result = extract("Total: 12.00", Invoice, Config(), llm=client)
     assert seen == ["json_schema", "json_object"] and result.data["total"] == 12.0
+
+
+# ---------------------------------------------------------------------------- stable report shape
+
+
+def test_report_has_the_documented_shape_for_every_field(invoice_doc):
+    result = run(invoice_doc, FakeLLM(GOOD_INVOICE))
+    report = result.to_report()
+    assert set(report) == {
+        "schema",
+        "model",
+        "fields",
+        "needs_review",
+        "validation_issues",
+        "error",
+    }
+    total = next(f for f in report["fields"] if f["field"] == "total")
+    assert set(total) == {"field", "value", "confidence", "grounded", "page", "source_text"}
+    assert total["value"] == 4620.0 and total["grounded"] is True and total["page"] == 1
+    assert total["source_text"] == "4620.00"
+    assert json.loads(result.to_report_json()) == report  # real JSON, dates included
+
+
+def test_report_for_an_invented_value_has_no_page_and_no_source_text(invoice_doc):
+    invented = {**GOOD_INVOICE, "customer_name": "Totally Made Up Corp"}
+    report = run(invoice_doc, FakeLLM(invented)).to_report()
+    field = next(f for f in report["fields"] if f["field"] == "customer_name")
+    assert field["grounded"] is False and field["page"] is None and field["source_text"] is None
+    assert "customer_name" in report["needs_review"]
+
+
+def test_report_lists_validation_issues_with_field_rule_and_message(invoice_doc):
+    wrong_total = {**GOOD_INVOICE, "total": 9999.0}
+    report = run(invoice_doc, FakeLLM(wrong_total)).to_report()
+    issue = report["validation_issues"][0]
+    assert set(issue) == {"field", "rule", "message", "severity"}
+
+
+def test_list_models_reads_the_local_server(monkeypatch):
+    from doctordoc.extract import LLMError, list_models
+
+    def fake_get(url, headers=None, timeout=None):
+        assert url.endswith("/api/tags")
+        return httpx.Response(
+            200,
+            json={"models": [{"name": "qwen2.5:7b"}, {"name": "llama3.2:3b"}]},
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert list_models(LLMConfig()) == ["llama3.2:3b", "qwen2.5:7b"]
+
+    def refuse(url, headers=None, timeout=None):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(httpx, "get", refuse)
+    with pytest.raises(LLMError):
+        list_models(LLMConfig())

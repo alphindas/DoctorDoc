@@ -63,3 +63,48 @@ class ExtractionResult(BaseModel):
 
     def to_json(self, indent: int | None = 2) -> str:
         return self.model_dump_json(indent=indent)
+
+    def to_report(self) -> dict[str, Any]:
+        """The stable output shape shared by the CLI, the UI and the future API.
+
+        One entry per field: {"field", "value", "confidence", "grounded", "page", "source_text"},
+        then "needs_review" (field names) and "validation_issues".
+        """
+        return {
+            "schema": self.schema_name,
+            "model": self.model,
+            "fields": [
+                {
+                    "field": f.path,
+                    "value": _plain(f.value),
+                    "confidence": round(f.confidence, 3),
+                    "grounded": f.grounded,
+                    "page": f.source.page if f.source else None,
+                    "source_text": f.source.text if f.source else None,
+                }
+                for f in self.fields
+            ],
+            "needs_review": list(self.needs_review),
+            "validation_issues": [
+                {
+                    "field": i.path,
+                    "rule": i.rule,
+                    "message": i.message,
+                    "severity": i.severity,
+                }
+                for i in self.issues
+            ],
+            "error": self.error,
+        }
+
+    def to_report_json(self, indent: int | None = 2) -> str:
+        import json
+
+        return json.dumps(self.to_report(), indent=indent, ensure_ascii=False)
+
+
+def _plain(value: Any) -> Any:
+    """Make a value JSON-safe (dates become 'YYYY-MM-DD' text)."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)

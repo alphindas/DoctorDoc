@@ -100,3 +100,22 @@ def _raise_for_status(response: httpx.Response) -> None:
         except ValueError:
             pass
         raise LLMError(f"LLM server answered {response.status_code}: {detail}")
+
+
+def list_models(config: LLMConfig, timeout: float = 3.0) -> list[str]:
+    """Names of the models the local server has (Ollama: /api/tags, OpenAI-style: /models).
+
+    Raises LLMError if the server cannot be reached. Used by the UI model dropdown.
+    """
+    headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else {}
+    path = "/api/tags" if config.provider == "ollama" else "/models"
+    try:
+        reply = httpx.get(
+            config.base_url.rstrip("/") + path, headers=headers, timeout=timeout
+        ).raise_for_status()
+        body = reply.json()
+    except (httpx.HTTPError, ValueError) as err:
+        raise LLMError(f"Cannot list models at {config.base_url}: {err}") from err
+    items = body.get("models", []) if config.provider == "ollama" else body.get("data", [])
+    key = "name" if config.provider == "ollama" else "id"
+    return sorted(str(item[key]) for item in items if isinstance(item, dict) and key in item)

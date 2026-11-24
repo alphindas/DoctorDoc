@@ -1,0 +1,20 @@
+# Look of the DoctorDoc UI (see docs/design/mockup.png). Streamlit reads this file from the
+# folder you start it in; `doctordoc ui` takes care of that.
+[theme]
+base = "light"
+primaryColor = "#03959d"
+backgroundColor = "#eef4fb"
+secondaryBackgroundColor = "#f7f9fd"
+textColor = "#0b123c"
+font = "sans serif"
+baseRadius = "large"
+
+[server]
+maxUploadSize = 200   # MB; `doctordoc ui` sets it from max_file_mb in your config
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"

@@ -1,0 +1,43 @@
+# Settings for a small public CPU demo (Hugging Face Spaces, Streamlit Community Cloud).
+# Only light engines: native readers, pdf_text, RapidOCR. No Docling (needs PyTorch, too big),
+# no PaddleOCR-VL, no cloud fallback. Use it with:
+#     DOCTORDOC_UI_CONFIG=doctordoc.demo.yaml doctordoc ui
+gpu: "off"
+max_file_mb: 10                # small uploads only: the demo machine has little memory
+quality_threshold: 0.55
+
+page_chains:
+  digital: [pdf_text]
+  mixed: [pdf_text, rapidocr]
+  scanned: [rapidocr]
+  garbled: [rapidocr, pdf_text]
+
+file_chains:
+  docx: [native]
+  pptx: [native]
+  html: [native]
+  xlsx: [native]
+  txt: [native]
+  md: [native]
+  csv: [native]
+  tsv: [native]
+  json: [native]
+  xml: [native]
+  eml: [native]
+  png: [rapidocr]
+  jpg: [rapidocr]
+  tiff: [rapidocr]
+  bmp: [rapidocr]
+  gif: [rapidocr]
+  webp: [rapidocr]
+
+intake:                        # smaller zip-bomb limits than the defaults
+  max_files: 30
+  max_total_mb: 30
+  max_member_mb: 10
+
+cloud:
+  enabled: false               # nothing may leave the server
+
+llm:                           # there is no Ollama on a free host: Extract shows a clear error
+  base_url: http://localhost:11434
