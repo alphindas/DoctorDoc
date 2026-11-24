@@ -1,0 +1,32 @@
+# Copy to doctordoc.yaml and pass it with:  doctordoc parse FILE --config doctordoc.yaml
+quality_threshold: 0.55        # engine output below this score is rejected, next engine is tried
+gpu: auto                      # auto | on | off
+merge_mixed_pages: true        # mixed pages: also add text that only the losing engine found
+cache_dir: .cache/doctordoc    # parsed results kept on disk, keyed by file hash
+
+# Which engines to try, in order, for each kind of PDF page.
+page_chains:
+  digital: [docling, pdf_text]
+  mixed: [docling, pdf_text]
+  scanned: [paddle_vl, rapidocr, tesseract, cloud_vlm]
+  garbled: [paddle_vl, rapidocr, tesseract, cloud_vlm, pdf_text]
+
+# Seconds allowed PER PAGE for an engine (plus 60 s to load the model).
+timeouts:
+  docling: 60
+  rapidocr: 30
+
+# Optional cloud vision fallback. OFF by default: nothing leaves your machine.
+cloud:
+  enabled: false
+  base_url: https://api.openai.com/v1
+  api_key: ""
+  model: gpt-4o-mini
+
+# Field extraction (local Ollama by default)
+llm:
+  provider: ollama             # ollama | openai (any OpenAI-compatible server)
+  base_url: http://localhost:11434
+  model: llama3.2:3b
+  max_retries: 2
+review_threshold: 0.7          # fields below this confidence go to needs_review

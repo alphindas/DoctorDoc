@@ -1,0 +1,40 @@
+# environments
+.venv/
+.venv-paddle/
+venv/
+env/
+
+# python caches and build output
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# DoctorDoc caches and outputs
+.cache/
+doctordoc-out/
+out/
+*.log
+
+# downloaded model weights
+*.onnx
+*.safetensors
+*.pdparams
+*.pdiparams
+*.pt
+*.pth
+*.bin
+*.gguf
+.paddlex/
+models/
+
+# secrets
+.env
+.env.*
+doctordoc.yaml
