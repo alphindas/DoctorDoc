@@ -42,8 +42,8 @@ DEFAULT_FILE_CHAINS: dict[str, list[str]] = {
 DEFAULT_TIMEOUTS: dict[str, float] = {
     "docling": 60,
     "paddle_vl": 60,
-    "rapidocr": 30,
-    "tesseract": 30,
+    "rapidocr": 90,  # OCR reads each page 4 times to find which way up it is
+    "tesseract": 90,
     "cloud_vlm": 60,
     "pdf_text": 10,
     "native": 30,
@@ -68,8 +68,13 @@ class LLMConfig(BaseModel):
     api_key: str = ""  # Ollama ignores it, hosted servers need one
     model: str = "llama3.2:3b"
     temperature: float = 0.0
-    max_retries: int = 2  # extra tries when the model returns invalid JSON
-    timeout: float = 600.0
+    max_retries: int = 1  # extra tries when the model returns invalid JSON
+    # Limits so one bad document cannot keep the model busy for ever. For scale, measured with
+    # llama3.2:3b on a 4 GB laptop GPU (about 16 tokens/s): a 45-line invoice needed 1831
+    # answer tokens and about 2 minutes. Raise them for longer lists or a slower machine.
+    max_output_tokens: int = 4096  # longest answer per call
+    timeout: float = 300.0  # seconds per call
+    max_seconds_per_document: float = 600.0  # all calls and retries for one document
     max_chars_per_call: int = 12000  # longer documents are split by page
     num_ctx: int = 8192  # context window asked from Ollama (keeps memory small)
 
@@ -104,6 +109,11 @@ class Config(BaseSettings):
     free_models_after_use: bool = True  # unload heavy models when a file is done (saves VRAM)
     ocr_dpi: int = 200
     ocr_languages: str = "eng"  # Tesseract-style language code
+    # find which way up each OCR page is: try 0/90/180/270 degrees and keep the upright one
+    fix_rotation: bool = True
+    # ...but accept the page as it is, after one read, if it scores at least this (0..1).
+    # Set it above 1 to always try all four angles.
+    rotation_early_stop: float = 0.75
 
     # --- optional cloud fallback ---
     cloud: CloudConfig = Field(default_factory=CloudConfig)
@@ -145,6 +155,8 @@ class Config(BaseSettings):
             "gpu",
             "ocr_dpi",
             "ocr_languages",
+            "fix_rotation",
+            "rotation_early_stop",
             "cloud",
             "merge_mixed_pages",
         }

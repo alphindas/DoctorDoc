@@ -130,7 +130,7 @@ def test_json_in_code_fence_is_accepted(invoice_doc):
 def test_invalid_values_are_dropped_after_retries_and_reported(invoice_doc):
     bad = {**GOOD_INVOICE, "total": "lots", "invoice_date": "yesterday"}
     result = run(invoice_doc, FakeLLM(bad))
-    assert result.attempts == 3  # 1 try + 2 retries
+    assert result.attempts == 2  # 1 try + 1 retry
     assert result.data["total"] is None and result.data["invoice_date"] is None
     assert result.data["invoice_number"] == "INV-2024-0042"  # the valid part is kept
     assert {i.path for i in result.issues if i.rule == "type"} == {"total", "invoice_date"}

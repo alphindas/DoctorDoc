@@ -11,6 +11,7 @@ import numpy as np
 
 from doctordoc.engines._images import iter_page_images
 from doctordoc.engines._ocr_layout import OcrBox, boxes_to_blocks
+from doctordoc.engines._orientation import read_upright
 from doctordoc.engines.base import Engine, EngineError
 from doctordoc.models import Page, PageKind
 
@@ -46,14 +47,23 @@ class RapidOcrEngine(Engine):
         result_pages: list[Page] = []
         for number, image, scale in iter_page_images(data, file_type, pages, self.config.ocr_dpi):
             try:
-                output = ocr(np.asarray(image), return_word_box=True)
+                if self.config.fix_rotation:
+                    # no per-line flipping: it would make an upside-down page look upright
+                    turned, boxes = read_upright(
+                        image,
+                        lambda i: _read(ocr, i, flip_lines=False),
+                        self.config.rotation_early_stop,
+                    )
+                else:
+                    turned, boxes = 0, _read(ocr, image, flip_lines=True)
             except Exception as err:
                 raise EngineError(f"RapidOCR failed on page {number}: {err}") from err
             result_pages.append(
                 Page(
                     number=number,
                     engine=self.name,
-                    blocks=boxes_to_blocks(_boxes(output), self.name, scale),
+                    blocks=boxes_to_blocks(boxes, self.name, scale),
+                    turned=turned,
                 )
             )
         return result_pages
@@ -61,6 +71,10 @@ class RapidOcrEngine(Engine):
     def release(self) -> None:
         self._ocr = None
         gc.collect()
+
+
+def _read(ocr, image, flip_lines: bool) -> list[OcrBox]:
+    return _boxes(ocr(np.asarray(image), return_word_box=True, use_cls=flip_lines))
 
 
 def _boxes(output) -> list[OcrBox]:

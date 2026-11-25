@@ -129,10 +129,12 @@ def _run(
     result: ExtractionResult,
 ) -> None:
     chunks = _split_into_chunks(pages, config.llm.max_chars_per_call)
+    # one time budget for the whole document, however many calls and retries it takes
+    deadline = time.monotonic() + config.llm.max_seconds_per_document
     merged: dict[str, Any] = {}
     issues: list[Issue] = []
     for chunk in chunks:
-        data, attempts, dropped = _ask_model(schema, chunk, config, client)
+        data, attempts, dropped = _ask_model(schema, chunk, config, client, deadline)
         result.attempts += attempts
         issues.extend(dropped)
         _merge_into(merged, data)
@@ -174,7 +176,7 @@ def _split_into_chunks(pages: list[PageText], max_chars: int) -> list[str]:
 
 
 def _ask_model(
-    schema: type[BaseModel], text: str, config: Config, client: LLMClient
+    schema: type[BaseModel], text: str, config: Config, client: LLMClient, deadline: float
 ) -> tuple[dict[str, Any], int, list[Issue]]:
     """Ask the LLM; on invalid JSON or invalid values ask again with the error message.
     After the last try, keep whatever is valid and drop the rest (recorded as issues)."""
@@ -188,8 +190,14 @@ def _ask_model(
     ]
     attempts, last_object, last_error = 0, None, None
     for _ in range(1 + config.llm.max_retries):
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise LLMError(
+                f"Gave up on this document after {config.llm.max_seconds_per_document:.0f} s "
+                "of model time (llm.max_seconds_per_document)."
+            )
         attempts += 1
-        reply = client.chat(messages, json_schema)
+        reply = client.chat(messages, json_schema, timeout=min(config.llm.timeout, left))
         try:
             obj = _parse_json_object(reply)
             last_object = obj

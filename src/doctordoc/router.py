@@ -384,11 +384,14 @@ class Router:
             return None
         report = quality_report(text)
         ok = report.score >= self.config.quality_threshold
+        reason = "passed the quality check" if ok else f"low quality: {report.reason}"
+        if turns := sorted({p.turned for p in produced if p.turned}):
+            reason += f"; turned {', '.join(map(str, turns))} degrees clockwise before OCR"
         decision = self._log(
             scope,
             engine.name,
             "accepted" if ok else "rejected",
-            "passed the quality check" if ok else f"low quality: {report.reason}",
+            reason,
             report.score,
             seconds,
         )

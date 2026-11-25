@@ -13,6 +13,7 @@ from collections import defaultdict
 
 from doctordoc.engines._images import iter_page_images
 from doctordoc.engines._ocr_layout import OcrBox, boxes_to_blocks
+from doctordoc.engines._orientation import read_upright
 from doctordoc.engines.base import Engine, EngineError
 from doctordoc.models import Page, PageKind
 
@@ -37,12 +38,18 @@ class TesseractEngine(Engine):
     def parse(self, data: bytes, file_type: str, pages: list[int] | None = None) -> list[Page]:
         result: list[Page] = []
         for number, image, scale in iter_page_images(data, file_type, pages, self.config.ocr_dpi):
-            buffer = io.BytesIO()
-            image.save(buffer, format="PNG")
-            tsv = self._run(buffer.getvalue())
-            blocks = boxes_to_blocks(_tsv_to_boxes(tsv), self.name, scale)
-            result.append(Page(number=number, engine=self.name, blocks=blocks))
+            if self.config.fix_rotation:
+                turned, boxes = read_upright(image, self._read, self.config.rotation_early_stop)
+            else:
+                turned, boxes = 0, self._read(image)
+            blocks = boxes_to_blocks(boxes, self.name, scale)
+            result.append(Page(number=number, engine=self.name, blocks=blocks, turned=turned))
         return result
+
+    def _read(self, image) -> list[OcrBox]:
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return _tsv_to_boxes(self._run(buffer.getvalue()))
 
     def _run(self, png: bytes) -> str:
         command = ["tesseract", "stdin", "stdout", "-l", self.config.ocr_languages, "tsv"]

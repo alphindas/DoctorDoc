@@ -71,6 +71,8 @@ class Page(BaseModel):
     engine: str | None = None  # which engine produced the blocks we kept
     blocks: list[Block] = Field(default_factory=list)
     quality: float | None = None  # text_quality of the kept output, 0..1
+    # degrees (clockwise) the picture was turned before OCR; block boxes are on the turned picture
+    turned: int = 0
     warnings: list[str] = Field(default_factory=list)
 
     @property
