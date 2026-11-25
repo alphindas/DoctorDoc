@@ -90,7 +90,7 @@ class Config(BaseSettings):
     quality_threshold: float = 0.55  # engine output below this is rejected, next engine is tried
     garbled_threshold: float = 0.5  # triage: a text layer below this is called "garbled"
     min_page_chars: int = 10  # triage: fewer characters than this means "no text layer"
-    mixed_image_coverage: float = 0.35  # triage: pictures covering more of the page => "mixed"
+    mixed_image_coverage: float = 0.10  # triage: pictures covering this much of the page => "mixed"
     merge_mixed_pages: bool = True  # mixed pages: also add text that only the losing engine found
 
     # --- routing ---

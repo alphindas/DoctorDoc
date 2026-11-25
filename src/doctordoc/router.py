@@ -275,13 +275,24 @@ class Router:
         return chosen
 
     def _merge_extra_content(self, winner: _Candidate, loser: _Candidate) -> int:
-        """Copy into the winner the blocks that only the loser found. Returns how many."""
+        """Copy into a text-layer winner the blocks that only OCR found (e.g. text inside a
+        picture). Returns how many.
+
+        Never the other way round: OCR reads everything that is visible, so text that only the
+        text layer has is hidden text (often junk from a bad OCR layer), and must not be added.
+        """
+        if not self._reads_text_layer(winner) or self._reads_text_layer(loser):
+            return 0
         page, other = winner.pages[0], loser.pages[0]
         added = merge_missing_blocks(page, other)
         if added:
             page.engine = f"{winner.engine}+{loser.engine}"
             page.quality = round(quality_report(page.text).score, 3)
         return added
+
+    def _reads_text_layer(self, candidate: _Candidate) -> bool:
+        engine = self.engines.get(candidate.engine or "")
+        return engine is not None and engine.uses_text_layer
 
     def _usable_engine(
         self, name: str, file_type: str, kind: PageKind | None, todo: list[int]

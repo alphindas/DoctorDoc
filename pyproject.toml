@@ -35,7 +35,8 @@ ui = ["streamlit>=1.67"]  # tabs that remember the open tab (key + on_change)
 marker = ["marker-pdf"]   # model weights: revenue/funding limits for commercial use
 mineru = ["mineru"]       # custom license with conditions
 all = ["doctordoc[docling,ocr,paddle,markitdown,api,ui]"]
-dev = ["pytest>=8", "ruff>=0.4", "mypy>=1.10", "reportlab>=4", "types-PyYAML"]
+bench = ["rapidfuzz>=3"]  # MIT: fast edit distance for the benchmark
+dev = ["pytest>=8", "ruff>=0.4", "mypy>=1.10", "reportlab>=4", "types-PyYAML", "rapidfuzz>=3"]
 
 [project.scripts]
 doctordoc = "doctordoc.cli:app"
@@ -45,6 +46,7 @@ packages = ["src/doctordoc"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # lets tests import the benchmarks package
 markers = ["integration: needs an optional engine installed (skipped if missing)"]
 
 [tool.ruff]

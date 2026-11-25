@@ -1,0 +1,253 @@
+system,doc,category,status,text_acc,word_recall,table_acc,field_acc,seconds,pages,engines_used,reason
+native,digital_1_invoice.pdf,digital_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+pdf_text,digital_1_invoice.pdf,digital_pdf,ok,1.0,1.0,0.0,0.0,0.004,1,,
+docling,digital_1_invoice.pdf,digital_pdf,ok,1.0,1.0,1.0,0.0,2.526,1,,
+markitdown,digital_1_invoice.pdf,digital_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+rapidocr,digital_1_invoice.pdf,digital_pdf,ok,1.0,1.0,0.0,0.0,3.861,1,,
+tesseract,digital_1_invoice.pdf,digital_pdf,ok,1.0,1.0,0.0,1.0,0.708,1,,
+router,digital_1_invoice.pdf,digital_pdf,ok,1.0,1.0,1.0,1.0,3.501,1,docling,
+native,digital_2_invoice.pdf,digital_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+pdf_text,digital_2_invoice.pdf,digital_pdf,ok,1.0,1.0,0.0,1.0,0.005,1,,
+docling,digital_2_invoice.pdf,digital_pdf,ok,1.0,1.0,1.0,1.0,2.698,1,,
+markitdown,digital_2_invoice.pdf,digital_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+rapidocr,digital_2_invoice.pdf,digital_pdf,ok,1.0,1.0,0.0,1.0,2.831,1,,
+tesseract,digital_2_invoice.pdf,digital_pdf,ok,1.0,0.9804,0.0,1.0,0.63,1,,
+router,digital_2_invoice.pdf,digital_pdf,ok,1.0,1.0,1.0,1.0,2.431,1,docling,
+native,digital_3_ddr.pdf,digital_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+pdf_text,digital_3_ddr.pdf,digital_pdf,ok,1.0,1.0,0.0,1.0,0.004,1,,
+docling,digital_3_ddr.pdf,digital_pdf,ok,1.0,1.0,1.0,1.0,1.889,1,,
+markitdown,digital_3_ddr.pdf,digital_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+rapidocr,digital_3_ddr.pdf,digital_pdf,ok,1.0,1.0,0.0,1.0,3.084,1,,
+tesseract,digital_3_ddr.pdf,digital_pdf,ok,1.0,1.0,0.0,1.0,0.622,1,,
+router,digital_3_ddr.pdf,digital_pdf,ok,1.0,1.0,1.0,1.0,2.041,1,docling,
+native,digital_4_memo.pdf,digital_pdf,skipped,0.0,0.0,,,0.0,1,,does not handle pdf files
+pdf_text,digital_4_memo.pdf,digital_pdf,ok,1.0,1.0,,,0.004,1,,
+docling,digital_4_memo.pdf,digital_pdf,ok,1.0,1.0,,,0.934,1,,
+markitdown,digital_4_memo.pdf,digital_pdf,skipped,0.0,0.0,,,0.0,1,,does not handle pdf files
+rapidocr,digital_4_memo.pdf,digital_pdf,ok,0.8837,0.8617,,,2.856,1,,
+tesseract,digital_4_memo.pdf,digital_pdf,ok,1.0,1.0,,,0.602,1,,
+router,digital_4_memo.pdf,digital_pdf,ok,1.0,1.0,,,1.169,1,docling,
+native,scanned_1_invoice_light.pdf,scanned_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+pdf_text,scanned_1_invoice_light.pdf,scanned_pdf,empty,0.0,0.0,0.0,0.0,0.001,1,,no text in the output
+docling,scanned_1_invoice_light.pdf,scanned_pdf,empty,0.0,0.0,0.0,0.0,2.806,1,,no text in the output
+markitdown,scanned_1_invoice_light.pdf,scanned_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+rapidocr,scanned_1_invoice_light.pdf,scanned_pdf,ok,1.0,1.0,0.0,1.0,2.56,1,,
+tesseract,scanned_1_invoice_light.pdf,scanned_pdf,ok,1.0,1.0,0.0,1.0,0.903,1,,
+router,scanned_1_invoice_light.pdf,scanned_pdf,ok,1.0,1.0,0.0,1.0,2.641,1,rapidocr,
+native,scanned_2_invoice_medium.pdf,scanned_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+pdf_text,scanned_2_invoice_medium.pdf,scanned_pdf,empty,0.0,0.0,0.0,0.0,0.001,1,,no text in the output
+docling,scanned_2_invoice_medium.pdf,scanned_pdf,empty,0.0,0.0,0.0,0.0,2.629,1,,no text in the output
+markitdown,scanned_2_invoice_medium.pdf,scanned_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+rapidocr,scanned_2_invoice_medium.pdf,scanned_pdf,ok,1.0,1.0,0.0,1.0,2.771,1,,
+tesseract,scanned_2_invoice_medium.pdf,scanned_pdf,ok,0.9816,0.9481,0.0,1.0,1.146,1,,
+router,scanned_2_invoice_medium.pdf,scanned_pdf,ok,1.0,1.0,0.0,1.0,2.753,1,rapidocr,
+native,scanned_3_ddr_medium.pdf,scanned_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+pdf_text,scanned_3_ddr_medium.pdf,scanned_pdf,empty,0.0,0.0,0.0,0.0,0.001,1,,no text in the output
+docling,scanned_3_ddr_medium.pdf,scanned_pdf,empty,0.0,0.0,0.0,0.0,2.226,1,,no text in the output
+markitdown,scanned_3_ddr_medium.pdf,scanned_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+rapidocr,scanned_3_ddr_medium.pdf,scanned_pdf,ok,1.0,1.0,0.0,1.0,2.434,1,,
+tesseract,scanned_3_ddr_medium.pdf,scanned_pdf,ok,0.959,1.0,0.0,1.0,1.201,1,,
+router,scanned_3_ddr_medium.pdf,scanned_pdf,ok,1.0,1.0,0.0,1.0,2.57,1,rapidocr,
+native,scanned_4_memo_heavy.pdf,scanned_pdf,skipped,0.0,0.0,,,0.0,1,,does not handle pdf files
+pdf_text,scanned_4_memo_heavy.pdf,scanned_pdf,empty,0.0,0.0,,,0.001,1,,no text in the output
+docling,scanned_4_memo_heavy.pdf,scanned_pdf,empty,0.0,0.0,,,0.983,1,,no text in the output
+markitdown,scanned_4_memo_heavy.pdf,scanned_pdf,skipped,0.0,0.0,,,0.0,1,,does not handle pdf files
+rapidocr,scanned_4_memo_heavy.pdf,scanned_pdf,ok,0.9,1.0,,,2.462,1,,
+tesseract,scanned_4_memo_heavy.pdf,scanned_pdf,ok,0.8632,0.7241,,,1.181,1,,
+router,scanned_4_memo_heavy.pdf,scanned_pdf,ok,0.9,1.0,,,2.405,1,rapidocr,
+native,garbled_1_invoice.pdf,garbled_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+pdf_text,garbled_1_invoice.pdf,garbled_pdf,ok,0.3885,0.5625,0.0,0.5,0.003,1,,
+docling,garbled_1_invoice.pdf,garbled_pdf,ok,0.3682,0.5625,0.0,0.5,2.539,1,,
+markitdown,garbled_1_invoice.pdf,garbled_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+rapidocr,garbled_1_invoice.pdf,garbled_pdf,ok,1.0,1.0,0.0,1.0,2.567,1,,
+tesseract,garbled_1_invoice.pdf,garbled_pdf,ok,0.8813,0.85,0.0,1.0,1.23,1,,
+router,garbled_1_invoice.pdf,garbled_pdf,ok,1.0,1.0,0.0,1.0,2.561,1,rapidocr,
+native,garbled_2_ddr.pdf,garbled_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+pdf_text,garbled_2_ddr.pdf,garbled_pdf,ok,0.2476,0.4337,0.0,0.1111,0.003,1,,
+docling,garbled_2_ddr.pdf,garbled_pdf,ok,0.2476,0.4337,0.0,0.1111,2.319,1,,
+markitdown,garbled_2_ddr.pdf,garbled_pdf,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+rapidocr,garbled_2_ddr.pdf,garbled_pdf,ok,1.0,0.9759,0.0,1.0,2.5,1,,
+tesseract,garbled_2_ddr.pdf,garbled_pdf,ok,0.9871,0.9759,0.0,1.0,1.176,1,,
+router,garbled_2_ddr.pdf,garbled_pdf,ok,1.0,0.9759,0.0,1.0,2.723,1,rapidocr,
+native,garbled_3_memo.pdf,garbled_pdf,skipped,0.0,0.0,,,0.0,1,,does not handle pdf files
+pdf_text,garbled_3_memo.pdf,garbled_pdf,ok,0.1509,0.17,,,0.003,1,,
+docling,garbled_3_memo.pdf,garbled_pdf,ok,0.1484,0.09,,,1.296,1,,
+markitdown,garbled_3_memo.pdf,garbled_pdf,skipped,0.0,0.0,,,0.0,1,,does not handle pdf files
+rapidocr,garbled_3_memo.pdf,garbled_pdf,ok,1.0,1.0,,,2.561,1,,
+tesseract,garbled_3_memo.pdf,garbled_pdf,ok,1.0,1.0,,,1.158,1,,
+router,garbled_3_memo.pdf,garbled_pdf,ok,1.0,1.0,,,3.773,1,rapidocr,
+native,mixed_1.pdf,mixed_pdf,skipped,0.0,0.0,,,0.0,1,,does not handle pdf files
+pdf_text,mixed_1.pdf,mixed_pdf,ok,0.8455,0.8375,,,0.003,1,,
+docling,mixed_1.pdf,mixed_pdf,ok,0.8455,0.8375,,,1.199,1,,
+markitdown,mixed_1.pdf,mixed_pdf,skipped,0.0,0.0,,,0.0,1,,does not handle pdf files
+rapidocr,mixed_1.pdf,mixed_pdf,ok,0.803,0.7625,,,2.638,1,,
+tesseract,mixed_1.pdf,mixed_pdf,ok,1.0,1.0,,,0.589,1,,
+router,mixed_1.pdf,mixed_pdf,ok,0.9649,0.975,,,3.697,1,docling+rapidocr,
+native,mixed_2.pdf,mixed_pdf,skipped,0.0,0.0,,,0.0,1,,does not handle pdf files
+pdf_text,mixed_2.pdf,mixed_pdf,ok,0.8333,0.8243,,,0.002,1,,
+docling,mixed_2.pdf,mixed_pdf,ok,0.8333,0.8243,,,1.087,1,,
+markitdown,mixed_2.pdf,mixed_pdf,skipped,0.0,0.0,,,0.0,1,,does not handle pdf files
+rapidocr,mixed_2.pdf,mixed_pdf,ok,0.8464,0.7973,,,2.386,1,,
+tesseract,mixed_2.pdf,mixed_pdf,ok,1.0,1.0,,,0.599,1,,
+router,mixed_2.pdf,mixed_pdf,ok,0.9776,1.0,,,3.378,1,docling+rapidocr,
+native,mixed_3.pdf,mixed_pdf,skipped,0.0,0.0,,,0.0,1,,does not handle pdf files
+pdf_text,mixed_3.pdf,mixed_pdf,ok,0.8489,0.8434,,,0.003,1,,
+docling,mixed_3.pdf,mixed_pdf,ok,0.8489,0.8434,,,1.112,1,,
+markitdown,mixed_3.pdf,mixed_pdf,skipped,0.0,0.0,,,0.0,1,,does not handle pdf files
+rapidocr,mixed_3.pdf,mixed_pdf,ok,1.0,1.0,,,2.569,1,,
+tesseract,mixed_3.pdf,mixed_pdf,ok,1.0,1.0,,,0.618,1,,
+router,mixed_3.pdf,mixed_pdf,ok,1.0,1.0,,,3.822,1,docling+rapidocr,
+native,table2p_1_rates.pdf,table_2page,skipped,0.0,0.0,0.0,,0.0,2,,does not handle pdf files
+pdf_text,table2p_1_rates.pdf,table_2page,ok,0.9692,1.0,0.0,,0.012,2,,
+docling,table2p_1_rates.pdf,table_2page,ok,0.9692,1.0,1.0,,15.462,2,,
+markitdown,table2p_1_rates.pdf,table_2page,skipped,0.0,0.0,0.0,,0.0,2,,does not handle pdf files
+rapidocr,table2p_1_rates.pdf,table_2page,ok,0.9629,0.9904,0.0,,8.276,2,,
+tesseract,table2p_1_rates.pdf,table_2page,ok,0.9692,0.9928,0.0,,1.537,2,,
+router,table2p_1_rates.pdf,table_2page,ok,0.9692,1.0,1.0,,15.497,2,docling,
+native,table2p_2_invoice.pdf,table_2page,skipped,0.0,0.0,0.0,0.0,0.0,2,,does not handle pdf files
+pdf_text,table2p_2_invoice.pdf,table_2page,ok,0.9787,1.0,0.0,0.625,0.01,2,,
+docling,table2p_2_invoice.pdf,table_2page,ok,0.9787,1.0,1.0,1.0,10.805,2,,
+markitdown,table2p_2_invoice.pdf,table_2page,skipped,0.0,0.0,0.0,0.0,0.0,2,,does not handle pdf files
+rapidocr,table2p_2_invoice.pdf,table_2page,ok,0.9787,1.0,0.0,0.625,7.337,2,,
+tesseract,table2p_2_invoice.pdf,table_2page,ok,0.9787,0.9914,0.0,1.0,1.719,2,,
+router,table2p_2_invoice.pdf,table_2page,ok,0.9787,1.0,1.0,1.0,10.688,2,docling,
+native,office_1.docx,docx,ok,1.0,1.0,1.0,1.0,0.029,1,,
+pdf_text,office_1.docx,docx,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle docx files
+docling,office_1.docx,docx,ok,1.0,1.0,1.0,1.0,0.041,1,,
+markitdown,office_1.docx,docx,ok,1.0,1.0,0.0,1.0,2.119,1,,
+rapidocr,office_1.docx,docx,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle docx files
+tesseract,office_1.docx,docx,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle docx files
+router,office_1.docx,docx,ok,1.0,1.0,1.0,1.0,0.037,1,docling,
+native,office_2.docx,docx,ok,1.0,1.0,1.0,1.0,0.023,1,,
+pdf_text,office_2.docx,docx,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle docx files
+docling,office_2.docx,docx,ok,1.0,1.0,1.0,1.0,0.034,1,,
+markitdown,office_2.docx,docx,ok,1.0,1.0,0.0,1.0,0.333,1,,
+rapidocr,office_2.docx,docx,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle docx files
+tesseract,office_2.docx,docx,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle docx files
+router,office_2.docx,docx,ok,1.0,1.0,1.0,1.0,0.027,1,docling,
+native,sheet_1.xlsx,xlsx,ok,0.9878,1.0,1.0,,0.009,1,,
+pdf_text,sheet_1.xlsx,xlsx,skipped,0.0,0.0,0.0,,0.0,1,,does not handle xlsx files
+docling,sheet_1.xlsx,xlsx,skipped,0.0,0.0,0.0,,0.0,1,,does not handle xlsx files
+markitdown,sheet_1.xlsx,xlsx,ok,0.9806,1.0,0.9769,,0.3,1,,
+rapidocr,sheet_1.xlsx,xlsx,skipped,0.0,0.0,0.0,,0.0,1,,does not handle xlsx files
+tesseract,sheet_1.xlsx,xlsx,skipped,0.0,0.0,0.0,,0.0,1,,does not handle xlsx files
+router,sheet_1.xlsx,xlsx,ok,0.9878,1.0,1.0,,0.006,1,native,
+native,sheet_2.xlsx,xlsx,ok,0.9877,1.0,1.0,,0.005,1,,
+pdf_text,sheet_2.xlsx,xlsx,skipped,0.0,0.0,0.0,,0.0,1,,does not handle xlsx files
+docling,sheet_2.xlsx,xlsx,skipped,0.0,0.0,0.0,,0.0,1,,does not handle xlsx files
+markitdown,sheet_2.xlsx,xlsx,ok,0.9805,1.0,0.9769,,0.209,1,,
+rapidocr,sheet_2.xlsx,xlsx,skipped,0.0,0.0,0.0,,0.0,1,,does not handle xlsx files
+tesseract,sheet_2.xlsx,xlsx,skipped,0.0,0.0,0.0,,0.0,1,,does not handle xlsx files
+router,sheet_2.xlsx,xlsx,ok,0.9877,1.0,1.0,,0.005,1,native,
+native,deck_1.pptx,pptx,ok,1.0,1.0,1.0,1.0,0.007,2,,
+pdf_text,deck_1.pptx,pptx,skipped,0.0,0.0,0.0,0.0,0.0,2,,does not handle pptx files
+docling,deck_1.pptx,pptx,ok,1.0,1.0,1.0,1.0,0.023,2,,
+markitdown,deck_1.pptx,pptx,ok,1.0,1.0,1.0,1.0,0.177,2,,
+rapidocr,deck_1.pptx,pptx,skipped,0.0,0.0,0.0,0.0,0.0,2,,does not handle pptx files
+tesseract,deck_1.pptx,pptx,skipped,0.0,0.0,0.0,0.0,0.0,2,,does not handle pptx files
+router,deck_1.pptx,pptx,ok,1.0,1.0,1.0,1.0,0.019,2,docling,
+native,deck_2.pptx,pptx,ok,1.0,1.0,1.0,1.0,0.006,2,,
+pdf_text,deck_2.pptx,pptx,skipped,0.0,0.0,0.0,0.0,0.0,2,,does not handle pptx files
+docling,deck_2.pptx,pptx,ok,1.0,1.0,1.0,1.0,0.018,2,,
+markitdown,deck_2.pptx,pptx,ok,1.0,1.0,1.0,1.0,0.17,2,,
+rapidocr,deck_2.pptx,pptx,skipped,0.0,0.0,0.0,0.0,0.0,2,,does not handle pptx files
+tesseract,deck_2.pptx,pptx,skipped,0.0,0.0,0.0,0.0,0.0,2,,does not handle pptx files
+router,deck_2.pptx,pptx,ok,1.0,1.0,1.0,1.0,0.023,2,docling,
+native,data_1.csv,csv,ok,1.0,1.0,1.0,,0.002,1,,
+pdf_text,data_1.csv,csv,skipped,0.0,0.0,0.0,,0.0,1,,does not handle csv files
+docling,data_1.csv,csv,skipped,0.0,0.0,0.0,,0.0,1,,does not handle csv files
+markitdown,data_1.csv,csv,ok,1.0,1.0,1.0,,0.184,1,,
+rapidocr,data_1.csv,csv,skipped,0.0,0.0,0.0,,0.0,1,,does not handle csv files
+tesseract,data_1.csv,csv,skipped,0.0,0.0,0.0,,0.0,1,,does not handle csv files
+router,data_1.csv,csv,ok,1.0,1.0,1.0,,0.003,1,native,
+native,data_2.csv,csv,ok,1.0,1.0,1.0,,0.002,1,,
+pdf_text,data_2.csv,csv,skipped,0.0,0.0,0.0,,0.0,1,,does not handle csv files
+docling,data_2.csv,csv,skipped,0.0,0.0,0.0,,0.0,1,,does not handle csv files
+markitdown,data_2.csv,csv,ok,1.0,1.0,1.0,,0.146,1,,
+rapidocr,data_2.csv,csv,skipped,0.0,0.0,0.0,,0.0,1,,does not handle csv files
+tesseract,data_2.csv,csv,skipped,0.0,0.0,0.0,,0.0,1,,does not handle csv files
+router,data_2.csv,csv,ok,1.0,1.0,1.0,,0.005,1,native,
+native,data_1.json,json,ok,1.0,1.0,1.0,,0.005,1,,
+pdf_text,data_1.json,json,skipped,0.0,0.0,0.0,,0.0,1,,does not handle json files
+docling,data_1.json,json,skipped,0.0,0.0,0.0,,0.0,1,,does not handle json files
+markitdown,data_1.json,json,ok,0.3537,1.0,0.0,,0.162,1,,
+rapidocr,data_1.json,json,skipped,0.0,0.0,0.0,,0.0,1,,does not handle json files
+tesseract,data_1.json,json,skipped,0.0,0.0,0.0,,0.0,1,,does not handle json files
+router,data_1.json,json,ok,1.0,1.0,1.0,,0.002,1,native,
+native,data_2.json,json,ok,1.0,1.0,1.0,,0.001,1,,
+pdf_text,data_2.json,json,skipped,0.0,0.0,0.0,,0.0,1,,does not handle json files
+docling,data_2.json,json,skipped,0.0,0.0,0.0,,0.0,1,,does not handle json files
+markitdown,data_2.json,json,ok,0.3556,1.0,0.0,,0.169,1,,
+rapidocr,data_2.json,json,skipped,0.0,0.0,0.0,,0.0,1,,does not handle json files
+tesseract,data_2.json,json,skipped,0.0,0.0,0.0,,0.0,1,,does not handle json files
+router,data_2.json,json,ok,1.0,1.0,1.0,,0.002,1,native,
+native,page_1.html,html,ok,1.0,1.0,1.0,1.0,0.002,1,,
+pdf_text,page_1.html,html,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle html files
+docling,page_1.html,html,ok,1.0,1.0,1.0,1.0,0.011,1,,
+markitdown,page_1.html,html,ok,1.0,1.0,1.0,1.0,0.141,1,,
+rapidocr,page_1.html,html,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle html files
+tesseract,page_1.html,html,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle html files
+router,page_1.html,html,ok,1.0,1.0,1.0,1.0,0.003,1,native,
+native,page_2.html,html,ok,1.0,1.0,1.0,1.0,0.002,1,,
+pdf_text,page_2.html,html,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle html files
+docling,page_2.html,html,ok,1.0,1.0,1.0,1.0,0.01,1,,
+markitdown,page_2.html,html,ok,1.0,1.0,1.0,1.0,0.172,1,,
+rapidocr,page_2.html,html,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle html files
+tesseract,page_2.html,html,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle html files
+router,page_2.html,html,ok,1.0,1.0,1.0,1.0,0.003,1,native,
+native,mail_1.eml,email,ok,0.2999,0.2706,0.0,,0.007,3,,
+pdf_text,mail_1.eml,email,skipped,0.0,0.0,0.0,,0.0,3,,does not handle eml files
+docling,mail_1.eml,email,skipped,0.0,0.0,0.0,,0.0,3,,does not handle eml files
+markitdown,mail_1.eml,email,skipped,0.0,0.0,0.0,,0.0,3,,does not handle eml files
+rapidocr,mail_1.eml,email,skipped,0.0,0.0,0.0,,0.0,3,,does not handle eml files
+tesseract,mail_1.eml,email,skipped,0.0,0.0,0.0,,0.0,3,,does not handle eml files
+router,mail_1.eml,email,ok,0.9484,1.0,1.0,,2.365,3,docling+native,
+native,mail_2.eml,email,ok,0.2991,0.2698,0.0,,0.004,3,,
+pdf_text,mail_2.eml,email,skipped,0.0,0.0,0.0,,0.0,3,,does not handle eml files
+docling,mail_2.eml,email,skipped,0.0,0.0,0.0,,0.0,3,,does not handle eml files
+markitdown,mail_2.eml,email,skipped,0.0,0.0,0.0,,0.0,3,,does not handle eml files
+rapidocr,mail_2.eml,email,skipped,0.0,0.0,0.0,,0.0,3,,does not handle eml files
+tesseract,mail_2.eml,email,skipped,0.0,0.0,0.0,,0.0,3,,does not handle eml files
+router,mail_2.eml,email,ok,0.9487,1.0,1.0,,2.248,3,docling+native,
+native,bundle_1.zip,zip,skipped,0.0,0.0,0.0,,0.0,3,,does not handle zip files
+pdf_text,bundle_1.zip,zip,skipped,0.0,0.0,0.0,,0.0,3,,does not handle zip files
+docling,bundle_1.zip,zip,skipped,0.0,0.0,0.0,,0.0,3,,does not handle zip files
+markitdown,bundle_1.zip,zip,skipped,0.0,0.0,0.0,,0.0,3,,does not handle zip files
+rapidocr,bundle_1.zip,zip,skipped,0.0,0.0,0.0,,0.0,3,,does not handle zip files
+tesseract,bundle_1.zip,zip,skipped,0.0,0.0,0.0,,0.0,3,,does not handle zip files
+router,bundle_1.zip,zip,ok,1.0,1.0,1.0,,2.542,3,docling+native,
+native,bundle_2.zip,zip,skipped,0.0,0.0,0.0,,0.0,3,,does not handle zip files
+pdf_text,bundle_2.zip,zip,skipped,0.0,0.0,0.0,,0.0,3,,does not handle zip files
+docling,bundle_2.zip,zip,skipped,0.0,0.0,0.0,,0.0,3,,does not handle zip files
+markitdown,bundle_2.zip,zip,skipped,0.0,0.0,0.0,,0.0,3,,does not handle zip files
+rapidocr,bundle_2.zip,zip,skipped,0.0,0.0,0.0,,0.0,3,,does not handle zip files
+tesseract,bundle_2.zip,zip,skipped,0.0,0.0,0.0,,0.0,3,,does not handle zip files
+router,bundle_2.zip,zip,ok,1.0,1.0,1.0,,2.326,3,docling+native,
+native,really_a_docx.pdf,wrong_extension,ok,1.0,1.0,1.0,1.0,0.014,1,,
+pdf_text,really_a_docx.pdf,wrong_extension,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle docx files
+docling,really_a_docx.pdf,wrong_extension,ok,1.0,1.0,1.0,1.0,0.028,1,,
+markitdown,really_a_docx.pdf,wrong_extension,ok,1.0,1.0,0.0,1.0,0.58,1,,
+rapidocr,really_a_docx.pdf,wrong_extension,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle docx files
+tesseract,really_a_docx.pdf,wrong_extension,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle docx files
+router,really_a_docx.pdf,wrong_extension,ok,1.0,1.0,1.0,1.0,0.03,1,docling,
+native,really_a_pdf.txt,wrong_extension,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+pdf_text,really_a_pdf.txt,wrong_extension,ok,1.0,1.0,0.0,0.875,0.004,1,,
+docling,really_a_pdf.txt,wrong_extension,ok,1.0,1.0,1.0,0.875,2.186,1,,
+markitdown,really_a_pdf.txt,wrong_extension,skipped,0.0,0.0,0.0,0.0,0.0,1,,does not handle pdf files
+rapidocr,really_a_pdf.txt,wrong_extension,ok,1.0,1.0,0.0,0.875,2.696,1,,
+tesseract,really_a_pdf.txt,wrong_extension,ok,1.0,1.0,0.0,0.875,0.645,1,,
+router,really_a_pdf.txt,wrong_extension,ok,1.0,1.0,1.0,0.875,2.273,1,docling,
+native,truncated.pdf,corrupt,skipped,,,,,0.0,1,,does not handle pdf files
+pdf_text,truncated.pdf,corrupt,failed,,,,,0.001,1,,EngineError: PDFium could not open the file: Failed to load document (PDFium: Da
+docling,truncated.pdf,corrupt,failed,,,,,0.033,1,,EngineError: Docling could not convert the file: Conversion failed for: input.pd
+markitdown,truncated.pdf,corrupt,skipped,,,,,0.0,1,,does not handle pdf files
+rapidocr,truncated.pdf,corrupt,failed,,,,,0.0,1,,EngineError: PDFium could not open the file: Failed to load document (PDFium: Da
+tesseract,truncated.pdf,corrupt,failed,,,,,0.0,1,,EngineError: PDFium could not open the file: Failed to load document (PDFium: Da
+router,truncated.pdf,corrupt,error,,,,,0.0,1,,PDF is corrupt or unreadable (Failed to load document (PDFium: Data format error
+native,truncated.docx,corrupt,skipped,,,,,0.0,1,,does not handle zip files
+pdf_text,truncated.docx,corrupt,skipped,,,,,0.0,1,,does not handle zip files
+docling,truncated.docx,corrupt,skipped,,,,,0.0,1,,does not handle zip files
+markitdown,truncated.docx,corrupt,skipped,,,,,0.0,1,,does not handle zip files
+rapidocr,truncated.docx,corrupt,skipped,,,,,0.0,1,,does not handle zip files
+tesseract,truncated.docx,corrupt,skipped,,,,,0.0,1,,does not handle zip files
+router,truncated.docx,corrupt,error,,,,,0.001,1,,ZIP structure is damaged.

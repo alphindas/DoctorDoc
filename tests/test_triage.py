@@ -34,4 +34,4 @@ def test_rules_directly():
     assert classify(0, None, 0.0, 50, cfg) == PageKind.SCANNED  # vector drawing / outlined text
     assert classify(500, 0.2, 0.0, 0, cfg) == PageKind.GARBLED
     assert classify(500, 0.95, 0.6, 0, cfg) == PageKind.MIXED
-    assert classify(500, 0.95, 0.1, 0, cfg) == PageKind.DIGITAL
+    assert classify(500, 0.95, 0.05, 0, cfg) == PageKind.DIGITAL

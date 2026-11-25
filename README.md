@@ -153,11 +153,41 @@ Marker and MinerU will only ever be optional plugins that you install yourself, 
 
 ## Benchmarks
 
-_Coming in Phase 3: text accuracy, table accuracy, field accuracy and pages per second for every engine and for the router, per document type, on a fixed-seed synthetic set with ground truth._
+36 synthetic files (made-up companies, wells and numbers; fixed seed; ground truth for every file), CPU only,
+every installed engine run **alone** and then the **router**. Text = 1 minus edit distance on letters and
+digits; fields = `llama3.2:3b` through the same pipeline. Full tables, per-file CSV and speed:
+[`benchmarks/results/RESULTS.md`](benchmarks/results/RESULTS.md).
 
-| Document type | Engine | Text accuracy | Table accuracy | Field accuracy | Pages/sec |
-|---|---|---|---|---|---|
-| _to be filled by `benchmarks/run.py`_ | | | | | |
+| Document type | best single engine | router | what a single engine gets wrong |
+|---|---|---|---|
+| digital PDF | 1.00 (pdf_text / docling) | 1.00 | nothing: ties |
+| scanned PDF (noise, blur, tilt) | 0.97 (rapidocr) | 0.97 | text-layer engines read 0.00 |
+| garbled PDF (junk hidden text layer) | 1.00 (rapidocr) | 1.00 | text-layer engines read 0.25 |
+| mixed PDF (text + picture of text) | **1.00 (tesseract)** | 0.98 | text-layer engines miss the picture (0.84) |
+| table over two pages (cells correct) | 1.00 (docling) | 1.00 | others find no table at all (0.00) |
+| docx / pptx / html / csv / xlsx | 0.99-1.00 | 0.99-1.00 | ties; engines cannot open every type |
+| email with attachments, zip | n/a | 0.95 / 1.00 | single engines cannot open the attachments |
+| **all 34 readable files: text** | 0.51 (docling) | **0.99** | |
+| **invoice + drilling fields** | 0.68 (docling) | **0.99** | |
+
+**How to read this honestly**
+
+- The router's big lead over "all files" is mostly *breadth*: no single engine opens every format or page kind.
+  The fair test of routing quality is the per-type rows, and there the router **ties** the best engine in most
+  rows, **wins** where the page kind decides everything (garbled, scanned, tables, fields), and **loses one**:
+  on mixed pages Tesseract beat the router (1.00 vs 0.98).
+- Every system is given the file's real type by DoctorDoc's detector; without it the single engines would do worse.
+- The set is small, synthetic and made by the same project that is being tested. It shows the router works as
+  designed, not how it does on your documents. Run `python scripts/make_samples.py && python -m benchmarks.run
+  [--fields]` to reproduce it, and add your own files to compare.
+- Nobody reads tables from scans (0.00 for every system): OCR output has no table structure yet.
+- `table_2page` text caps at 0.97 for everyone: page 2 repeats the table header, which is real text that the
+  ground truth does not list.
+- Speed is one run on one machine and excludes model loading. Text-layer reading is about 250 pages/s;
+  Docling about 0.5 pages/s; OCR about 0.4-1.6 pages/s on CPU.
+
+Two real router bugs were found by this benchmark and fixed: a junk text layer was being merged back on top of good
+OCR text, and a picture covering under 35% of a page (e.g. a stamp) never triggered OCR (the limit is now 10%).
 
 ## Screenshots
 

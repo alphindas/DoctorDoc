@@ -38,3 +38,7 @@ models/
 .env
 .env.*
 doctordoc.yaml
+
+# benchmark: the sample set is rebuilt from a fixed seed; only the results are kept
+benchmarks/data/
+benchmarks/results/llm_cache.json

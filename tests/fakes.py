@@ -25,10 +25,13 @@ class FakeEngine(Engine):
         delay: float = 0.0,
         heavy: bool = False,
         kinds=None,
+        uses_text_layer: bool = False,
     ) -> None:
         super().__init__()
         self.name = name  # type: ignore[misc]
         self.heavy = heavy  # type: ignore[misc]
+        # like the real engines: pdf_text and docling read the PDF's text layer
+        self.uses_text_layer = uses_text_layer or name in ("pdf_text", "docling")  # type: ignore[misc]
         self.text, self.available, self.error, self.delay = text, available, error, delay
         self.kinds = kinds
         self.calls: list[list[int] | None] = []

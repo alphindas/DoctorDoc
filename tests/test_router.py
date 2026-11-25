@@ -226,3 +226,19 @@ def test_merge_can_be_switched_off(config):
         samples.mixed_pdf(),
     )
     assert not any(d.outcome == "merged" for d in result.decisions)
+
+
+def test_ocr_winner_never_gets_the_hidden_text_layer_merged_in(config):
+    """A junk text layer under a good scan must not be added back on top of the OCR text."""
+    ocr_text = (
+        "The crew tripped out of the hole at noon and changed the bit. Mud weight was 10.2 ppg." * 2
+    )
+    junk = "Wkh fuhz wulssha rxw ri wkh kroh dw qrrq dqg fkdqjhg wkh elw"
+    result = run(
+        config,
+        [fakes.FakeEngine("pdf_text", junk), fakes.FakeEngine("rapidocr", ocr_text),
+         fakes.FakeEngine("tesseract")],
+        samples.mixed_pdf(),
+    )  # fmt: skip
+    page = result.pages[0]
+    assert page.engine == "rapidocr" and "Wkh fuhz" not in page.text

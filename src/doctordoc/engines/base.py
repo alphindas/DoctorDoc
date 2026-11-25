@@ -23,6 +23,8 @@ class Engine(ABC):
     name: ClassVar[str]
     license: ClassVar[str]
     extra: ClassVar[str] = ""  # the pip extra that installs it, e.g. "ocr"
+    # True if it reads the PDF's own text layer (not the picture of the page)
+    uses_text_layer: ClassVar[bool] = False
     heavy: ClassVar[bool] = False  # True if it loads a big model (only one heavy model at a time)
     note: ClassVar[str] = ""  # a short warning shown by `doctordoc engines`, e.g. "experimental"
 

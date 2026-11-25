@@ -18,6 +18,7 @@ DOCLING_TYPES = {"pdf", "docx", "pptx", "html"}
 
 class DoclingEngine(Engine):
     name = "docling"
+    uses_text_layer = True
     license = "MIT (Docling)"
     extra = "docling"
     heavy = True

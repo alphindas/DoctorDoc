@@ -28,6 +28,7 @@ class _Line:
 
 class PdfTextEngine(Engine):
     name = "pdf_text"
+    uses_text_layer = True
     license = "Apache-2.0 / BSD-3 (pypdfium2 + PDFium)"
     extra = ""
 
