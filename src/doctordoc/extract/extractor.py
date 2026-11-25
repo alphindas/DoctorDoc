@@ -20,7 +20,7 @@ from pydantic import BaseModel, ValidationError
 
 from doctordoc.config import Config
 from doctordoc.extract.grounding import Grounding, PageText, ground_value
-from doctordoc.extract.llm import LLMClient, LLMError
+from doctordoc.extract.llm import LLMClient, LLMError, LLMPromptTooLong
 from doctordoc.extract.models import ExtractionResult, FieldResult, Issue
 from doctordoc.extract.schemas import BUILTIN_SCHEMAS
 from doctordoc.extract.validation import Rule, run_rules
@@ -75,9 +75,11 @@ def extract(
             result.error = result.error or "The document has no text to extract from."
             return result
         client = llm or LLMClient(config.llm)
+        first_call = len(client.calls)  # a shared client may hold earlier documents' calls
         try:
             _run(model_class, pages, config, client, rules or [], result)
         finally:
+            _record_calls(result, client.calls[first_call:])  # also when extraction failed
             if llm is None:
                 client.close()
     except LLMError as err:
@@ -120,6 +122,13 @@ def _pages_of(
     return [PageText.from_page(p) for p in document.pages if p.text.strip()]
 
 
+def _record_calls(result: ExtractionResult, calls: list[dict[str, Any]]) -> None:
+    """Keep the token trace on the result, and show any prompt size problem as a warning."""
+    result.llm_calls = calls
+    for problem in dict.fromkeys(p for call in calls for p in call["problems"]):
+        result.warnings.append(f"Prompt size: {problem}")
+
+
 def _run(
     schema: type[BaseModel],
     pages: list[PageText],
@@ -131,6 +140,7 @@ def _run(
     chunks = _split_into_chunks(pages, config.llm.max_chars_per_call)
     # one time budget for the whole document, however many calls and retries it takes
     deadline = time.monotonic() + config.llm.max_seconds_per_document
+    first_call = len(client.calls)
     merged: dict[str, Any] = {}
     issues: list[Issue] = []
     for chunk in chunks:
@@ -144,8 +154,21 @@ def _run(
     all_rules = list(getattr(schema, "doctordoc_rules", [])) + extra_rules
     issues.extend(run_rules(all_rules, data))
     result.data = data
-    result.issues = issues
     result.fields = _score_fields(data, pages, issues, config.review_threshold)
+    # If a sent prompt may have been cut, no field can be trusted: send all of them to review.
+    cut = [p for call in client.calls[first_call:] if call["sent"] for p in call["problems"]]
+    if cut:
+        issues.append(
+            Issue(
+                path="document",
+                rule="prompt_length",
+                severity="error",  # "error" puts "document" on the needs_review list
+                message="Check every field. " + " ".join(dict.fromkeys(cut)),
+            )
+        )
+        for item in result.fields:
+            item.needs_review = True
+    result.issues = issues
     result.needs_review = _review_list(result.fields, issues)
     if len(chunks) > 1:
         result.warnings.append(
@@ -154,18 +177,29 @@ def _run(
 
 
 def _split_into_chunks(pages: list[PageText], max_chars: int) -> list[str]:
-    """Text with [Page N] markers, cut into pieces of at most max_chars (pages stay whole
-    when possible; one huge page is cut at paragraph breaks)."""
+    """Text with [Page N] markers, cut into pieces of about max_chars. Pages stay whole when
+    possible; a long page is cut at blank lines. A single block longer than max_chars is cut at
+    line breaks, and a longer line by characters. (An ordinary piece can still be a few
+    characters over: the page marker and joining blank lines are not counted.)"""
     pieces: list[str] = []
     for page in pages:
-        paragraphs = page.text.split("\n\n")
+        marker = f"[Page {page.number}]\n"
         current = ""
-        for paragraph in paragraphs:
+        cut_a_block = False
+        for paragraph in page.text.split("\n\n"):
+            if len(paragraph) > max_chars:
+                if current:
+                    pieces.append(f"{marker}{current}")
+                parts = _split_block(paragraph, max_chars - len(marker))
+                pieces.extend(marker + part for part in parts)
+                current, cut_a_block = "", True
+                continue
             if current and len(current) + len(paragraph) > max_chars:
-                pieces.append(f"[Page {page.number}]\n{current}")
+                pieces.append(f"{marker}{current}")
                 current = ""
             current = f"{current}\n\n{paragraph}" if current else paragraph
-        pieces.append(f"[Page {page.number}]\n{current}")
+        if current or not cut_a_block:
+            pieces.append(f"{marker}{current}")
     chunks: list[str] = []
     for piece in pieces:
         if chunks and len(chunks[-1]) + len(piece) < max_chars:
@@ -173,6 +207,28 @@ def _split_into_chunks(pages: list[PageText], max_chars: int) -> list[str]:
         else:
             chunks.append(piece)
     return chunks
+
+
+def _split_block(block: str, size: int) -> list[str]:
+    """Cut one long block into parts of at most `size` characters: between lines where it can,
+    inside a line only if that line alone is too long."""
+    size = max(size, 1)
+    parts: list[str] = []
+    current: str | None = None
+    for line in block.split("\n"):
+        while len(line) > size:
+            if current is not None:
+                parts.append(current)
+                current = None
+            parts.append(line[:size])
+            line = line[size:]
+        if current is not None and len(current) + 1 + len(line) > size:
+            parts.append(current)
+            current = None
+        current = line if current is None else f"{current}\n{line}"
+    if current:
+        parts.append(current)
+    return parts
 
 
 def _ask_model(
@@ -196,8 +252,13 @@ def _ask_model(
                 f"Gave up on this document after {config.llm.max_seconds_per_document:.0f} s "
                 "of model time (llm.max_seconds_per_document)."
             )
+        try:
+            reply = client.chat(messages, json_schema, timeout=min(config.llm.timeout, left))
+        except LLMPromptTooLong:
+            if last_error is None:
+                raise
+            break  # the retry would not fit: keep what is valid in the earlier answer
         attempts += 1
-        reply = client.chat(messages, json_schema, timeout=min(config.llm.timeout, left))
         try:
             obj = _parse_json_object(reply)
             last_object = obj

@@ -204,8 +204,8 @@ def test_long_documents_are_split_by_page_and_merged():
     pages = [
         Page(number=n, blocks=[Block(type=BlockType.PARAGRAPH, text=t)])
         for n, t in [
-            (1, "Invoice number: INV-7 " + "filler " * 40),
-            (2, "Total: 55.00 " + "filler " * 40),
+            (1, "Invoice number: INV-7 " + "filler " * 35),  # each page is under the limit:
+            (2, "Total: 55.00 " + "filler " * 35),  # this test is about splitting by page
         ]
     ]
     llm = FakeLLM({"invoice_number": "INV-7"}, {"total": 55.0})

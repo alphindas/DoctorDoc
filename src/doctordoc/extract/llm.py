@@ -1,7 +1,8 @@
 """A tiny client for a local or remote LLM. Two protocols:
 
-  ollama  Ollama's own /api/chat. It lets us set the context window (num_ctx), so a long
-          prompt is not silently cut, and pass the JSON schema as `format` (structured output).
+  ollama  Ollama's own /api/chat. It lets us set the context window (num_ctx) and pass the
+          JSON schema as `format` (structured output). Setting num_ctx does NOT stop silent
+          cutting: see the prompt size guard below.
   openai  Any OpenAI-compatible /chat/completions server (vLLM, LM Studio, OpenAI ...).
           We ask for a JSON schema first and fall back to plain JSON mode if it is refused.
 
@@ -12,17 +13,79 @@ Two limits keep one bad document from running for ever. The answer has a maximum
 And every call has a time limit measured on the clock: a plain HTTP timeout only limits the
 silence between two pieces of an answer, so a server that sends a little now and then would
 never reach it.
+
+Prompt size guard (Ollama only). Seen with Ollama 0.33.1 and llama3.2:3b at num_ctx 8192: a
+prompt of 8116 tokens was read whole, one of 8237 tokens was cut and reported as 4098 tokens
+(about half of num_ctx), with no error. An answer that ran past the window gave no error
+either. So before sending, we estimate the prompt's tokens and do not send one that is
+over the safe limit; after the reply, we check the token counts Ollama reports.
+The estimate comes from characters, not from the model's tokenizer: it can be wrong for
+other models and scripts, which is why the reply is checked too.
 """
 
 from __future__ import annotations
 
 import json
+import logging
+import math
 import time
 from typing import Any
 
 import httpx
 
 from doctordoc.config import LLMConfig
+
+log = logging.getLogger(__name__)
+
+ANSWER_RESERVE_TOKENS = 1024  # part of num_ctx that the prompt must leave for the answer
+SYSTEM_CHARS_PER_TOKEN = 3.5  # instructions and schema: measured 3.9 to 4.2
+TEXT_CHARS_PER_TOKEN = 2.0  # document text: measured 2.0 to 2.8 on the sample files
+TOKENS_PER_MESSAGE = 8  # the chat template around each message
+CUT_MARGIN_TOKENS = 16  # how close to num_ctx / 2 a count must be to look like a cut
+
+
+def estimate_prompt_tokens(messages: list[dict[str, str]]) -> int:
+    """A cautious guess, made from characters. ASCII and two-byte characters (accents, Greek,
+    Cyrillic, Arabic) use the ratios above; other characters count as 1 token each (Chinese,
+    Japanese, Indian scripts, symbols), and emoji and other 4-byte characters as 2."""
+    total = 0.0
+    for message in messages:
+        system = message["role"] == "system"
+        per_token = SYSTEM_CHARS_PER_TOKEN if system else TEXT_CHARS_PER_TOKEN
+        for char in message["content"]:
+            code = ord(char)
+            total += 1 / per_token if code < 0x800 else 1 if code < 0x10000 else 2
+        total += TOKENS_PER_MESSAGE
+    return math.ceil(total)
+
+
+def safe_prompt_limit(config: LLMConfig) -> int:
+    """The most prompt tokens we send: num_ctx minus the room kept for the answer."""
+    return config.num_ctx - min(ANSWER_RESERVE_TOKENS, config.max_output_tokens)
+
+
+def count_problems(prompt: int | None, answer: int | None, config: LLMConfig) -> list[str]:
+    """What the token counts in a reply say may have gone wrong (empty list: nothing seen)."""
+    if prompt is None:
+        return []
+    problems = []
+    half = config.num_ctx // 2
+    if half <= prompt <= half + CUT_MARGIN_TOKENS:
+        problems.append(
+            f"The model read {prompt} prompt tokens, about half of num_ctx {config.num_ctx}. "
+            "Ollama reports this when it has cut a prompt that did not fit."
+        )
+    elif prompt >= safe_prompt_limit(config):
+        problems.append(
+            f"The prompt used {prompt} tokens, at or over the safe limit of "
+            f"{safe_prompt_limit(config)} (num_ctx {config.num_ctx} minus room for the answer)."
+        )
+    if answer is not None and prompt + answer > config.num_ctx:
+        problems.append(
+            f"Prompt plus answer ({prompt} + {answer} tokens) ran past num_ctx "
+            f"{config.num_ctx}. Part of the prompt may have been dropped while answering."
+        )
+    return problems
 
 
 class LLMError(Exception):
@@ -33,9 +96,14 @@ class LLMTimeout(LLMError):
     """The model did not finish its answer in the time allowed."""
 
 
+class LLMPromptTooLong(LLMError):
+    """The prompt would probably not fit in the context window, so it was not sent."""
+
+
 class LLMClient:
     def __init__(self, config: LLMConfig, transport: httpx.BaseTransport | None = None) -> None:
         self.config = config
+        self.calls: list[dict[str, Any]] = []  # one trace per Ollama call, oldest first
         headers = {"Authorization": f"Bearer {config.api_key}"} if config.api_key else {}
         self._http = httpx.Client(
             base_url=config.base_url.rstrip("/"),
@@ -96,11 +164,54 @@ class LLMClient:
                 "has a very long list: raise llm.max_output_tokens."
             )
 
+    # ------------------------------------------------------------------ prompt size guard
+
+    def _check_prompt_size(self, messages: list[dict[str, str]]) -> dict[str, Any]:
+        """Before sending: start this call's trace, and refuse a prompt that would not fit."""
+        estimate, limit = estimate_prompt_tokens(messages), safe_prompt_limit(self.config)
+        trace: dict[str, Any] = {
+            "estimated_prompt_tokens": estimate,
+            "safe_limit": limit,
+            "sent": False,
+            "prompt_eval_count": None,
+            "eval_count": None,
+            "problems": [],
+        }
+        self.calls.append(trace)
+        if estimate > limit:
+            problem = (
+                f"Not sent: the prompt is about {estimate} tokens (estimate), over the safe "
+                f"limit of {limit} (num_ctx {self.config.num_ctx} minus room for the answer). "
+                "Ollama can silently cut a prompt that does not fit. Lower "
+                "llm.max_chars_per_call or raise llm.num_ctx."
+            )
+            trace["problems"].append(problem)
+            log.warning(problem)
+            raise LLMPromptTooLong(problem)
+        return trace
+
+    def _check_token_counts(self, trace: dict[str, Any], body: dict[str, Any]) -> None:
+        """After the reply: keep Ollama's token counts and warn if they look wrong."""
+        trace["prompt_eval_count"] = body.get("prompt_eval_count")
+        trace["eval_count"] = body.get("eval_count")
+        log.info(
+            "LLM call: estimated %s prompt tokens (safe limit %s), prompt_eval_count=%s, "
+            "eval_count=%s",
+            trace["estimated_prompt_tokens"],
+            trace["safe_limit"],
+            trace["prompt_eval_count"],
+            trace["eval_count"],
+        )
+        for problem in count_problems(trace["prompt_eval_count"], trace["eval_count"], self.config):
+            trace["problems"].append(problem)
+            log.warning(problem)
+
     # ------------------------------------------------------------------ Ollama
 
     def _ollama(
         self, messages: list[dict[str, str]], schema: dict[str, Any] | None, deadline: float
     ) -> str:
+        trace = self._check_prompt_size(messages)
         payload: dict[str, Any] = {
             "model": self.config.model,
             "messages": messages,
@@ -112,9 +223,11 @@ class LLMClient:
                 "num_predict": self.config.max_output_tokens,
             },
         }
+        trace["sent"] = True
         response = self._post("/api/chat", payload, deadline)
         _raise_for_status(response)
         body = response.json()
+        self._check_token_counts(trace, body)
         self._check_not_cut_off(body.get("done_reason"))
         return str(body["message"]["content"])
 

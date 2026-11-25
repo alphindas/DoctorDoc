@@ -54,6 +54,7 @@ class ExtractionResult(BaseModel):
     issues: list[Issue] = Field(default_factory=list)  # every validation problem
     model: str = ""
     attempts: int = 0  # LLM calls made (retries included)
+    llm_calls: list[dict[str, Any]] = Field(default_factory=list)  # token trace (Ollama only)
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
     seconds: float = 0.0
