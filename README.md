@@ -205,8 +205,8 @@ digits; fields = `llama3.2:3b` through the same pipeline. Full tables, per-file 
   yet: the sample files are built only if the `--data` folder has none. With `--fields`, the run still uses and updates
   the git-ignored answer cache `benchmarks/results/llm_cache.json`.
 - Nobody reads tables from scans (0.00 for every system): OCR output has no table structure yet.
-- `table_2page` text caps at 0.97 for everyone: page 2 repeats the table header, which is real text that the
-  ground truth does not list.
+- `table_2page` text averaged 0.97 for every system that read it (0.96-0.98 per file). A possible reason is that page 2
+  repeats the table header and the ground truth does not list the repeat (cause not checked).
 - Speed is one run on one machine and excludes model loading. In that run, `pdf_text` read about 250 pages/s over the
   files it could read, and Docling about 0.5 pages/s (about 0.3 on PDFs only). OCR ran at 0.3-1.7 pages/s on CPU,
   depending on engine and file type. In the later [seed 5678 run](benchmarks/results/runs/seed5678-router-fields/RESULTS.md),
@@ -279,7 +279,7 @@ and can overwrite the saved CSVs there.
 
 | document type (files) | text | lines kept | table cells | fields | seconds per file |
 |---|---|---|---|---|---|
-| invoice (5) | 1.00 / 1.00 | 1.00 / 0.23 | 0.00 / 1.00 | 0.97 / 1.00 | 0.01 / 2.7 |
+| invoice (5) | 1.00 / 1.00 | 1.00 / 0.225 | 0.00 / 1.00 | 0.975 / 1.000 | 0.01 / 2.7 |
 | drilling report (5) | 1.00 / 1.00 | 1.00 / 0.10 | 0.00 / 1.00 | 1.00 / 1.00 | under 0.01 / 2.1 |
 | memo, no table (5) | 1.00 / 1.00 | 1.00 / 1.00 | - | - | under 0.01 / 1.1 |
 | rate table, 2 pages (5) | 0.97 / 0.97 | - | 0.00 / 1.00 | - | 0.01 / 17.4 |
@@ -287,7 +287,11 @@ and can overwrite the saved CSVs there.
 
 - Docling often glues several labelled lines into one paragraph. Fields did not suffer on these files, but the
   Markdown is harder to read.
-- The 0.97 against 1.00 on invoice fields is **one** field; it is too small a difference to mean anything.
+- Invoice row: Docling's 2.7 s is the average of two runs, 2.65 s
+  ([first CSV](benchmarks/results/runs/digital_pdfs/invoice_ddr_memo_rates_2page_invoice_2page.csv)) and 2.85 s
+  ([run with fields](benchmarks/results/runs/digital_pdfs/invoice_ddr_fields.csv)). The field scores come from the
+  run with fields.
+- The 0.975 against 1.000 on invoice fields is **one** field; it is too small a difference to mean anything.
 - Docling stays first because the simple reader finds no tables at all. On pages without tables it adds only time.
 - All of these are simple one-column pages. **Multi-column and complex layouts were not tested.**
 
@@ -352,7 +356,7 @@ It can accept text that is wrong. "Bad" here means text accuracy under 0.90.
 On 5 files each of new, simple digital PDFs
 ([CSV](benchmarks/results/runs/digital_pdfs/invoice_ddr_memo_rates_2page_invoice_2page.csv)), Docling scored 1.00 on
 table cells and the simple reader 0.00, with the same text score. But Docling merges lines: the share of lines kept
-separate was **0.23** on invoices and **0.10** on drilling reports, against 1.00 for the simple reader (two-page
+separate was **0.225** on invoices and **0.10** on drilling reports, against 1.00 for the simple reader (two-page
 invoices: 0.62 against 1.00; memos: 1.00 for both).
 
 ### 5. OCR tables score 0.00
@@ -384,17 +388,17 @@ Honest list, from testing on synthetic documents so far:
 - **Rotation correction has limits and a cost.** A turned page, or a poor one scoring under 0.75, is read four times: about 10 s instead of 3 s per page on CPU. `fix_rotation: false` turns it off. It handles quarter turns of left-to-right text only: no correction of other angles or of a curved or strongly tilted page, and it was designed and measured on synthetic pages, including imitations of phone photos, not real ones. PaddleOCR-VL and the cloud fallback do not use it.
 - **PaddleOCR-VL is experimental.** It is written against the library's source but is not proven here. On our test machine, with no GPU build of PaddlePaddle, the model did not fit in memory: the process was killed after loading the weights (seen during development, no result file saved). It is off by default on CPU. It may need more RAM or a GPU build of PaddlePaddle.
 - **Grounding is not proof of correctness.** Every extracted value is checked against the document text. A value that cannot be found there is marked `grounded: false`, gets a low confidence and, with the default settings, goes to `needs_review`. Grounding flags invented values; it does not prevent them, so the model can still return one. An invented value that happens to match text in the document is not flagged. And a value that is copied from the text can still sit in the wrong field (for example the due date put into "invoice date"). `needs_review` lowers that risk; it does not remove it.
-- **Docling is first for digital PDFs only because of tables.** It reads text no better than the simple `pdf_text` engine and often merges separate lines into one paragraph ([numbers above](#is-docling-better-than-the-simple-reader-on-digital-pdfs)). It also splits inline bold into separate paragraphs, which is why HTML defaults to `native`.
+- **Docling is first for digital PDFs only because of tables.** It reads text no better than the simple `pdf_text` engine and often merges separate lines into one paragraph ([numbers above](#is-docling-better-than-the-simple-reader-on-digital-pdfs)). It also splits inline bold into separate paragraphs, which is why HTML defaults to `native` (the splitting was seen during development, no result file saved).
 - **A high "text quality" score does not mean the text is right.** In the old, pre-fix result it accepted 37 of 41 bad outputs; after the rotation fix, 19 of 23. It caught 4 of 6 bad outputs from junk hidden text layers ([details above](#how-often-the-quality-score-is-fooled)). Tesseract has also dropped a line from a clean PDF without the score showing it (seen during development, no result file saved). Do not read a high score as "correct". The Compare tab exists to see this with your own eyes.
 - OCR reads a phone photo mostly well but can swap look-alike characters and mix up the order of lines (seen during development, no result file saved).
 - Reading order is not always right: for example, Docling can put a PDF's title block after the body (seen during development, no result file saved).
-- Excel formulas without a saved result (a file written by a script, not saved by Excel) read as empty cells.
-- The UI "Copy" button opens a small box with Streamlit's own copy icon (two clicks), not a one-click button. The UI was checked in Chromium only, and not on a phone.
+- Excel formulas without a saved result (a file written by a script, not saved by Excel) read as empty cells (seen during development, no result file saved).
+- The UI "Copy" button opens a small box with Streamlit's own copy icon (two clicks), not a one-click button. The UI was checked in Chromium only (seen during development, no result file saved); other browsers and phones are not tested.
 - Engine comparison and the page picture work for uploads and for files directly inside a ZIP or email, not for deeper nesting.
-- **Field extraction has time and length limits.** A model reading junk text can keep writing for many minutes, so by default an answer stops at 4096 tokens (`llm.max_output_tokens`), a call at 300 s (`llm.timeout`) and one document at 600 s in total (`llm.max_seconds_per_document`), with one retry. A document that hits a limit returns an error and no fields, not a partial result. Real long documents can hit them too: long item lists, or a CPU-only machine, may need higher limits (seen during development, no result file saved).
+- **Field extraction has time and length limits.** A model reading junk text can keep writing for many minutes (seen during development, no result file saved), so by default an answer stops at 4096 tokens (`llm.max_output_tokens`), a call at 300 s (`llm.timeout`) and one document at 600 s in total (`llm.max_seconds_per_document`), with one retry. A document that hits a limit returns an error and no fields, not a partial result. Real long documents can hit them too: long item lists, or a CPU-only machine, may need higher limits (seen during development, no result file saved).
 - OCR engines sometimes glue words together across wide gaps (seen during development, no result file saved). Grounding tolerates this, but the Markdown shows it.
 - Field extraction uses a small local model (`llama3.2:3b` by default) and has only been measured on small synthetic sets (invoices and drilling reports).
-- `.msg` (Outlook) attachment reading is untested because there was no sample file.
+- `.msg` (Outlook) attachment reading is not tested: this repo has no `.msg` sample file and no test for it.
 - English OCR only for now (`ocr_languages: eng`).
 - No handwriting, no formulas, and no figure understanding.
 

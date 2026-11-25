@@ -12,7 +12,7 @@ engines (native readers, pdf_text, **RapidOCR**) on a small CPU machine. No Olla
 | Thing | Why | How |
 |---|---|---|
 | Docling | pulls in PyTorch (GBs of RAM and disk); a free host will run out | not installed (`requirements.txt` has only `ui` and `ocr`), and not in the demo chains |
-| PaddleOCR-VL | needs 8+ GB RAM or a GPU | not installed, not in the chains |
+| PaddleOCR-VL | did not fit on our CPU-only test machine; it may need more RAM or a GPU build of PaddlePaddle (seen during development, no result file saved) | not installed, not in the chains |
 | Cloud fallback | would send visitors' pages to a third party | `cloud.enabled: false` in `doctordoc.demo.yaml`, and no API key is set |
 | Ollama / Extract tab | there is no model server on a free host | the Extract tab shows "Cannot reach the LLM server". Leave it, or point `llm` at a hosted OpenAI-compatible server and keep the key in the host's secrets (then page text leaves the machine) |
 | Big uploads | memory | `max_file_mb: 10` in the demo config |
