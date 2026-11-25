@@ -1,0 +1,142 @@
+building the sample set in benchmarks/data_seed5678 ...
+systems: router | files: 48
+[1/48] digital_1_invoice.pdf
+[2/48] digital_2_invoice.pdf
+[3/48] digital_3_ddr.pdf
+[4/48] digital_4_memo.pdf
+[5/48] scanned_1_invoice_light.pdf
+[6/48] scanned_2_invoice_medium.pdf
+[7/48] scanned_3_ddr_medium.pdf
+[8/48] scanned_4_memo_heavy.pdf
+[9/48] garbled_1_invoice.pdf
+[10/48] garbled_2_ddr.pdf
+[11/48] garbled_3_memo.pdf
+[12/48] mixed_1.pdf
+[13/48] mixed_2.pdf
+[14/48] mixed_3.pdf
+[15/48] table2p_1_rates.pdf
+[16/48] table2p_2_invoice.pdf
+[17/48] office_1.docx
+[18/48] office_2.docx
+[19/48] sheet_1.xlsx
+[20/48] sheet_2.xlsx
+[21/48] deck_1.pptx
+[22/48] deck_2.pptx
+[23/48] data_1.csv
+[24/48] data_2.csv
+[25/48] data_1.json
+[26/48] data_2.json
+[27/48] page_1.html
+[28/48] page_2.html
+[29/48] mail_1.eml
+[30/48] mail_2.eml
+[31/48] bundle_1.zip
+[32/48] bundle_2.zip
+[33/48] really_a_docx.pdf
+[34/48] really_a_pdf.txt
+[35/48] truncated.pdf
+[36/48] truncated.docx
+[37/48] rotated_1_invoice_90.pdf
+[38/48] rotated_2_memo_90.pdf
+[39/48] rotated_3_invoice_180.pdf
+[40/48] rotated_4_ddr_180.pdf
+[41/48] rotated_5_ddr_270.pdf
+[42/48] rotated_6_invoice_270.pdf
+[43/48] photo_1_invoice_0.jpg
+[44/48] photo_2_ddr_0.jpg
+[45/48] photo_3_memo_0.jpg
+[46/48] photo_4_invoice_90.jpg
+[47/48] photo_5_ddr_180.jpg
+[48/48] photo_6_memo_270.jpg
+# DoctorDoc benchmark results
+
+Run on 2026-11-25, x86_64, Python 3.12.3, CPU only, 48 synthetic files (seed 5678), 13.1 min. docling 2.152.0, rapidocr 3.10.0, markitdown 0.1.9, pypdfium2 5.15.2, rapidfuzz 3.14.6.
+
+Files each system produced text for: router 46/46
+
+Broken files: the router returned a clear error (no crash) for 2/2. Good files wrongly rejected: 0.
+
+### Text accuracy (1.00 = perfect; edit distance on letters and digits)
+
+| document type | router |
+|---|---:|
+| digital_pdf | **1.00** |
+| scanned_pdf | **0.94** |
+| garbled_pdf | **1.00** |
+| mixed_pdf | **1.00** |
+| table_2page | **0.97** |
+| docx | **1.00** |
+| xlsx | **0.99** |
+| pptx | **1.00** |
+| csv | **1.00** |
+| json | **1.00** |
+| html | **1.00** |
+| email | **0.95** |
+| zip | **1.00** |
+| wrong_extension | **1.00** |
+| rotated | **1.00** |
+| photo | **0.91** |
+| **ALL files** | **0.98** |
+
+### Table accuracy (share of cells at the right row and column)
+
+| document type | router |
+|---|---:|
+| digital_pdf | **1.00** |
+| scanned_pdf | **0.00** |
+| garbled_pdf | **0.00** |
+| table_2page | **1.00** |
+| docx | **1.00** |
+| xlsx | **1.00** |
+| pptx | **1.00** |
+| csv | **1.00** |
+| json | **1.00** |
+| html | **1.00** |
+| email | **1.00** |
+| zip | **1.00** |
+| wrong_extension | **1.00** |
+| rotated | **0.00** |
+| photo | **0.00** |
+| **ALL files** | **0.62** |
+
+### Field accuracy (llama3.2:3b; correct fields / true fields)
+
+| document type | router |
+|---|---:|
+| digital_pdf | **1.00** |
+| scanned_pdf | **1.00** |
+| garbled_pdf | **1.00** |
+| table_2page | **1.00** |
+| docx | **1.00** |
+| pptx | **1.00** |
+| html | **1.00** |
+| wrong_extension | **1.00** |
+| rotated | **1.00** |
+| photo | **1.00** |
+| **ALL files** | **1.00** |
+
+### Speed (pages per second, files the system could read; model loading excluded)
+
+| document type | router |
+|---|---:|
+| digital_pdf | **0.3** |
+| scanned_pdf | **0.3** |
+| garbled_pdf | **0.2** |
+| mixed_pdf | **0.2** |
+| table_2page | **0.1** |
+| docx | **19.0** |
+| xlsx | **48.8** |
+| pptx | **63.5** |
+| csv | **222.2** |
+| json | **400.0** |
+| html | **250.0** |
+| email | **0.8** |
+| zip | **0.9** |
+| wrong_extension | **0.6** |
+| rotated | **0.1** |
+| photo | **0.1** |
+
+**Router vs single engines.** No router-vs-single comparison for text_acc in this partial run.
+No router-vs-single comparison for table_acc in this partial run.
+No router-vs-single comparison for field_acc in this partial run.
+
