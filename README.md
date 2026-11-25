@@ -2,8 +2,8 @@
 
 **One door for any document: it works out what the file is, picks the best engine for each page, and returns clean Markdown/JSON plus fields you can trace back to the source text.**
 
-> Status: early (v0.1). Parsing + router, field extraction and a web UI work. The benchmark, the
-> API and the Docker image are next. Apache-2.0, fully local by default.
+> Status: early (v0.1). Parsing + router, field extraction, a web UI and a synthetic benchmark work.
+> The API and the Docker image are not built yet. Apache-2.0, fully local by default.
 
 ## 30-second quickstart
 
@@ -27,9 +27,9 @@ from doctordoc.extract import extract
 
 doc = parse("scan.pdf")
 print(doc.to_markdown())
-result = extract(doc, "invoice")                # or your own Pydantic model
-print(result.needs_review)                      # fields a human should check
-print(result.field("total").source)             # page + exact text span it came from
+result = extract(doc, "invoice")  # or your own Pydantic model
+print(result.needs_review)  # fields a human should check
+print(result.field("total").source)  # page + exact text span it came from
 ```
 
 ## How it works
@@ -128,8 +128,10 @@ not in the document text (the model made it up): `page` and `source_text` are th
 
 4. An engine's output is **accepted only if its text quality score passes** (`quality_threshold`, default 0.55). Otherwise the next engine in the chain is tried.
 5. Every attempt is written to a **decision log** (`--explain`): which engine, accepted or rejected, why, the quality score, the seconds. A missing engine is skipped and logged, never a crash.
-6. Only one heavy model is kept in memory at a time, and it is released after each file.
-7. Cloud fallback (`cloud_vlm`) is **off by default**. If you switch it on, page images are sent to the server you configure.
+6. RapidOCR and Tesseract first find **which way up** a page is. A page that already reads well (score 0.75 or more,
+   `rotation_early_stop`) is read once; otherwise it is read at 0, 90, 180 and 270 degrees and the best angle is kept.
+7. Only one heavy model is kept in memory at a time, and it is released after each file.
+8. Cloud fallback (`cloud_vlm`) is **off by default**. If you switch it on, page images are sent to the server you configure.
 
 ## Engines and licenses
 
@@ -152,6 +154,13 @@ PyMuPDF is **deliberately not used**: it is AGPL, which would force every user o
 Marker and MinerU will only ever be optional plugins that you install yourself, after reading their licenses. Check the current terms of any engine before you ship it in a product.
 
 ## Benchmarks
+
+Everything here is measured on **small sets of synthetic files made by this project**. Read the numbers as "does it
+work as designed", not as accuracy on your documents.
+
+### Router against single engines
+
+These tables are from the full run on the first 36 files, **before** rotation correction was added.
 
 36 synthetic files (made-up companies, wells and numbers; fixed seed; ground truth for every file), CPU only,
 every installed engine run **alone** and then the **router**. Text = 1 minus edit distance on letters and
@@ -186,8 +195,81 @@ digits; fields = `llama3.2:3b` through the same pipeline. Full tables, per-file 
 - Speed is one run on one machine and excludes model loading. Text-layer reading is about 250 pages/s;
   Docling about 0.5 pages/s; OCR about 0.4-1.6 pages/s on CPU.
 
+Since that run, the mixed-page row has changed. RapidOCR's built-in "flip upside-down lines" step was turning a good
+line into junk; with it off (part of the rotation fix), a re-run of the 3 mixed files scored 1.00 for the router,
+level with Tesseract.
+
 Two real router bugs were found by this benchmark and fixed: a junk text layer was being merged back on top of good
 OCR text, and a picture covering under 35% of a page (e.g. a stamp) never triggered OCR (the limit is now 10%).
+
+### Rotated scans and phone photos
+
+12 more files: 6 scans turned 90, 180 or 270 degrees, and 6 **imitation** phone photos made by a script (tilted view,
+uneven light, JPEG), 3 upright and 3 turned. They are not real photos. Router only:
+
+| files | text, no correction | text, with correction | fields, no correction | fields, with correction | seconds per page, none / always 4 reads / with early stop |
+|---|---:|---:|---:|---:|---|
+| turned scans (6) | 0.19 | 1.00 | 0.54 | 1.00 | 3.2 / 10.4 / 9.7 |
+| turned photos (3) | 0.19 | 0.99 | 0.22 | 1.00 | 3.2 / 10.7 / 10.6 |
+| upright photos (3) | 0.99 | 0.99 | 1.00 | 1.00 | 3.2 / 10.6 / **3.0** |
+
+- **The speed cost:** a turned page takes about **3 times longer** (about 10 s instead of 3 s on one CPU). An upright
+  page that passes the early stop costs about what it did before. A poor but upright page that scores under 0.75 also
+  pays for all four reads.
+- With the early stop, the text of all 36 outputs (12 files; router, RapidOCR and Tesseract) was byte-for-byte the same
+  as with four reads. Fields were measured on the four-read run; memos have no fields.
+- **Picking the angle with the highest OCR confidence does not work.** It chose the right angle on 10 of 16 test pages
+  with RapidOCR and 5 of 16 with Tesseract, because both quietly straighten sideways lines and read them confidently,
+  in the wrong order. Counting confidence only for text that lies horizontally chose right on 16 of 16.
+- **These numbers are optimistic.** The angle rule and the 0.75 cutoff were designed on pages from this same set.
+  They have **not** yet been tested on a new set.
+
+### How often the quality score is fooled
+
+The router accepts an engine's output when its text-quality score is at least 0.55. The score never sees the true
+text. Checked against the truth on **119 single-engine outputs** from 46 readable files, calling an output bad when
+text accuracy is under 0.90:
+
+| | bad outputs | bad ones the score **accepted** | accepted outputs that were bad |
+|---|---:|---:|---:|
+| before the rotation fix | 41 | **37 (90%)** | 32% |
+| after it | 23 | **19 (83%)** | 17% |
+
+- Before the fix, an output that was only 0.12 accurate scored a perfect 1.00. The only bad outputs it caught (4) came
+  from junk hidden text layers, which is what it was built for.
+- The "after" row is better because there were fewer bad outputs, **not** because the check improved.
+- With a stricter bar (bad = under 0.99), it accepted 93% of bad outputs before the fix.
+- These shares depend on which files are in the set. **A high quality score does not mean the text is right.**
+
+### Is Docling better than the simple reader on digital PDFs?
+
+**For tables, yes. For text, no.** New digital PDFs, 5 of each type (`python -m benchmarks.digital_pdfs [--fields]`).
+Each cell is simple reader (`pdf_text`) / Docling. "Lines kept" is the share of titles, labelled values and paragraphs
+that stay a block of their own.
+
+| document type (files) | text | lines kept | table cells | fields | seconds per file |
+|---|---|---|---|---|---|
+| invoice (5) | 1.00 / 1.00 | 1.00 / 0.23 | 0.00 / 1.00 | 0.97 / 1.00 | 0.01 / 2.7 |
+| drilling report (5) | 1.00 / 1.00 | 1.00 / 0.10 | 0.00 / 1.00 | 1.00 / 1.00 | under 0.01 / 2.1 |
+| memo, no table (5) | 1.00 / 1.00 | 1.00 / 1.00 | - | - | under 0.01 / 1.1 |
+| rate table, 2 pages (5) | 0.97 / 0.97 | - | 0.00 / 1.00 | - | 0.01 / 17.4 |
+| invoice, 2 pages (5; fields on 3) | 0.98 / 0.98 | 1.00 / 0.62 | 0.00 / 1.00 | 1.00 / 1.00 | 0.01 / 11.4 |
+
+- Docling often glues several labelled lines into one paragraph. Fields did not suffer on these files, but the
+  Markdown is harder to read.
+- The 0.97 against 1.00 on invoice fields is **one** field; it is too small a difference to mean anything.
+- Docling stays first because the simple reader finds no tables at all. On pages without tables it adds only time.
+- All of these are simple one-column pages. **Multi-column and complex layouts were not tested.**
+
+## Roadmap
+
+Ideas that are **not built**:
+
+- **Text from the simple reader plus tables from Docling** on digital PDFs: keep the simple reader's lines and put
+  Docling's tables in their places.
+- **A second check to catch wrong text**, because the quality score only catches junk. For example, comparing two
+  engines on the same page. None has been tried or measured.
+- An API, a Docker image and a published CI setup.
 
 ## Screenshots
 
@@ -198,11 +280,11 @@ _Coming with the Streamlit UI (`doctordoc ui`): Parse tab, Router log, Extract t
 Honest list, from testing on synthetic documents so far:
 
 - **OCR has no table structure.** RapidOCR and Tesseract return one line per text block. Only Docling finds real tables, and only on digital pages. A scanned invoice table comes out as lines of text, not as a table.
-- **Finding which way up a page is costs time.** RapidOCR and Tesseract read every OCR page at 0, 90, 180 and 270 degrees, which made the router about 3x slower on those pages (about 3 s to 10 s per page on one CPU). `fix_rotation: false` turns it off. It handles quarter turns of left-to-right text only: no correction of other angles or of a curved or strongly tilted page, and it was designed and measured on synthetic pages, including imitations of phone photos, not real ones. PaddleOCR-VL and the cloud fallback do not use it.
+- **Rotation correction has limits and a cost.** A turned page, or a poor one scoring under 0.75, is read four times: about 10 s instead of 3 s per page on one CPU. `fix_rotation: false` turns it off. It handles quarter turns of left-to-right text only: no correction of other angles or of a curved or strongly tilted page, and it was designed and measured on synthetic pages, including imitations of phone photos, not real ones. PaddleOCR-VL and the cloud fallback do not use it.
 - **PaddleOCR-VL is experimental.** It is written against the library's source but is not proven here. On a machine with about 6 GB of RAM and no GPU build of PaddlePaddle, the model did not fit in memory (the process was killed after loading the weights). It is off by default on CPU. It needs 8+ GB of RAM or a GPU build of PaddlePaddle.
 - **Grounding is not proof of correctness.** Every extracted value is checked against the document text, so the model cannot invent a number that is not there. But a value that is copied from the text can still sit in the wrong field (for example the due date put into "invoice date"). `needs_review` lowers that risk; it does not remove it.
-- **Docling is not clearly better yet.** It is the default for digital PDFs because it finds tables, but in our tests it sometimes merges separate lines into one paragraph and splits inline bold into separate paragraphs, where the plain `pdf_text` engine did better. That is why HTML defaults to `native`. The Phase 3 benchmark will decide if "Docling first" is right for digital PDFs.
-- **The "text quality" score catches junk text, not wrong text.** A sideways scan read without rotation correction comes out in a scrambled order and still scores 1.00; Tesseract dropped a whole line from a clean PDF and also scored 1.00. Do not read a high score as "correct". The Compare tab exists to see this with your own eyes.
+- **Docling is first for digital PDFs only because of tables.** It reads text no better than the simple `pdf_text` engine and often merges separate lines into one paragraph ([numbers above](#is-docling-better-than-the-simple-reader-on-digital-pdfs)). It also splits inline bold into separate paragraphs, which is why HTML defaults to `native`.
+- **The "text quality" score catches junk text, not wrong text.** It accepted 37 of 41 bad outputs in one measurement ([details above](#how-often-the-quality-score-is-fooled)). Tesseract dropped a whole line from a clean PDF and still scored 1.00. Do not read a high score as "correct". The Compare tab exists to see this with your own eyes.
 - OCR reads a phone photo mostly well but can swap look-alike characters (`RI-2025-1047` came out as `R1-2025-1047`) and mix up the order of address and table lines.
 - Docling puts a PDF's title block after the body in one of our samples (the vendor name appeared at the end). Reading order is not always right.
 - Excel formulas without a saved result (a file written by a script, not saved by Excel) read as empty cells.
@@ -210,7 +292,7 @@ Honest list, from testing on synthetic documents so far:
 - Engine comparison and the page picture work for uploads and for files directly inside a ZIP or email, not for deeper nesting.
 - **Field extraction has time and length limits.** A model reading junk text can keep writing for many minutes, so by default an answer stops at 4096 tokens (`llm.max_output_tokens`), a call at 300 s (`llm.timeout`) and one document at 600 s in total (`llm.max_seconds_per_document`), with one retry. A document that hits a limit returns an error and no fields, not a partial result. Real long documents can hit them too: on our 4 GB laptop GPU a 45-line invoice took about 2 minutes, so lists of about 100 lines or more, or a CPU-only machine, will need higher limits.
 - OCR engines sometimes glue words together across wide gaps (for example `08:30-24:00Drilled`). Grounding tolerates this, but the Markdown shows it.
-- Field extraction uses a small local model (`llama3.2:3b` by default) and was tested on a handful of synthetic documents. It is not benchmarked yet.
+- Field extraction uses a small local model (`llama3.2:3b` by default) and has only been measured on small synthetic sets (invoices and drilling reports).
 - `.msg` (Outlook) attachment reading is untested because there was no sample file.
 - English OCR only for now (`ocr_languages: eng`).
 - No handwriting, no formulas, and no figure understanding.
