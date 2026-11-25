@@ -1,0 +1,7 @@
+kind,doc,engine,text_acc,lines_kept,table_acc,field_acc,seconds
+invoice_2page,invoice_2page_1.pdf,pdf_text,0.9788,1.0,0.0,1.0,0.012
+invoice_2page,invoice_2page_1.pdf,docling,0.9788,0.625,1.0,1.0,14.971
+invoice_2page,invoice_2page_2.pdf,pdf_text,0.9787,1.0,0.0,1.0,0.011
+invoice_2page,invoice_2page_2.pdf,docling,0.9787,0.625,1.0,1.0,13.73
+invoice_2page,invoice_2page_3.pdf,pdf_text,0.9792,1.0,0.0,1.0,0.01
+invoice_2page,invoice_2page_3.pdf,docling,0.9792,0.625,1.0,1.0,12.28

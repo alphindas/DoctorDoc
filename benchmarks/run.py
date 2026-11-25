@@ -4,6 +4,12 @@
     python -m benchmarks.run                  # text, tables, speed
     python -m benchmarks.run --fields         # also field extraction with the local LLM
 
+Quick mode, to re-check only what you are changing (minutes, not the whole run):
+    python -m benchmarks.run --types rotated,photo --systems router --label rotation_after
+
+A partial run (--types, --systems or --limit) writes to benchmarks/results/runs/<label>/ and
+never overwrites the full results.
+
 How the comparison is made fair (and where it is generous to the single engines):
   * Every system gets the file's REAL type from doctordoc's detector (so a .pdf that is a
     docx is not a problem for them). Without it they would do worse.
@@ -33,6 +39,7 @@ from doctordoc import parse
 from doctordoc.config import Config
 from doctordoc.detect import detect
 from doctordoc.models import BlockType, Document, Page
+from doctordoc.quality import quality_report
 from doctordoc.router import Router
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -55,6 +62,8 @@ CATEGORY_ORDER = [
     "email",
     "zip",
     "wrong_extension",
+    "rotated",
+    "photo",
 ]
 
 
@@ -115,6 +124,8 @@ def score(item: dict[str, Any], out: dict[str, Any]) -> dict[str, Any]:
         "table_acc": None,
         "field_acc": None,
         "engines_used": out.get("engines_used", ""),
+        # what the text-quality check thinks of the same output (it never sees the truth)
+        "quality": quality_report(out["text"]).score if out["status"] == "ok" else None,
     }
     if item["expect_error"]:
         return row  # no truth text: judged separately, as "handled gracefully"
@@ -149,30 +160,66 @@ class FieldRunner:
         pages = out["pages_out"]
         text = "\n\n".join(p.text for p in pages)
         key = hashlib.sha256(
-            f"{self.config.llm.model}|{item['schema']}|{text}".encode()
+            f"{self.config.llm.model}|{self.config.llm.max_output_tokens}|"
+            f"{item['schema']}|{text}".encode()
         ).hexdigest()
         if key not in self.cache:
             result = extract(Document(source=item["id"], pages=pages), item["schema"], self.config)
             if result.error:  # a failed call is not cached: it would poison later runs
+                print(f"  fields failed on {item['id']}: {result.error}", file=sys.stderr)
                 return 0.0
             self.cache[key] = json.loads(json.dumps(result.data, default=str))
             self.path.write_text(json.dumps(self.cache))
         return field_accuracy(self.cache[key], item["fields"])
 
 
+# ======================================================================= quick mode
+
+
+def parse_types(values: list[str] | None) -> list[str]:
+    """'rotated,photo', 'rotated photo' or both -> ['rotated', 'photo']."""
+    return [name for value in values or [] for name in value.split(",") if name]
+
+
+def select_types(manifest: list[dict[str, Any]], types: list[str] | None) -> list[dict[str, Any]]:
+    if not types:
+        return manifest
+    present = {m["category"] for m in manifest}
+    if unknown := [t for t in types if t not in present]:
+        raise SystemExit(
+            f"unknown document type(s): {', '.join(unknown)}. In this sample set: "
+            f"{', '.join(sorted(present))}. If a type is new, re-run scripts/make_samples.py."
+        )
+    return [m for m in manifest if m["category"] in types]
+
+
+def output_dir(args: argparse.Namespace) -> tuple[Path, str]:
+    """Where results go, and the run's label. Only a full run may write the main results."""
+    partial = bool(args.types or args.systems or args.limit)
+    if not partial and not args.label:
+        return args.out, ""
+    label = args.label or "_".join(args.types or ["partial"])
+    return args.out / "runs" / label, label
+
+
 # ======================================================================= driver
+
+
+def load_generator() -> Any:
+    """Import scripts/make_samples.py (the scripts folder is not a package)."""
+    spec = importlib.util.spec_from_file_location(
+        "make_samples", ROOT / "scripts" / "make_samples.py"
+    )
+    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    sys.modules["make_samples"] = module  # dataclasses look the module up by name
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
 
 
 def load_manifest(data_dir: Path, seed: int) -> list[dict[str, Any]]:
     if not (data_dir / "manifest.json").exists():
         print(f"building the sample set in {data_dir} ...", file=sys.stderr)
-        spec = importlib.util.spec_from_file_location(
-            "make_samples", ROOT / "scripts" / "make_samples.py"
-        )
-        module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
-        sys.modules["make_samples"] = module  # dataclasses look the module up by name
-        spec.loader.exec_module(module)  # type: ignore[union-attr]
-        module.write_corpus(data_dir, seed)
+        load_generator().write_corpus(data_dir, seed)
     return json.loads((data_dir / "manifest.json").read_text())["files"]  # type: ignore[no-any-return]
 
 
@@ -201,20 +248,19 @@ def warm_up(
 def run_benchmark(args: argparse.Namespace) -> list[dict[str, Any]]:
     config = Config(gpu="off")
     router = Router(config)
-    manifest = load_manifest(args.data, args.seed)
-    if args.only:
-        manifest = [m for m in manifest if m["category"] in args.only]
+    everything = load_manifest(args.data, args.seed)
+    manifest = select_types(everything, args.types)
     if args.limit:
         manifest = manifest[: args.limit]
     available = [n for n, e in router.engines.items() if e.is_available() and n not in SKIP_ENGINES]
     systems = [s for s in (args.systems or [*available, ROUTER]) if s == ROUTER or s in available]
     print(f"systems: {', '.join(systems)} | files: {len(manifest)}", file=sys.stderr)
     if not args.no_warmup:
-        warm_up(config, router, systems, args.data, manifest)
-    fields = FieldRunner(config, args.out / "llm_cache.json") if args.fields else None
+        warm_up(config, router, systems, args.data, everything)  # not the filtered list
+    fields = FieldRunner(config, RESULTS / "llm_cache.json") if args.fields else None
 
     rows: list[dict[str, Any]] = []
-    outputs = args.data / "outputs"
+    outputs = args.data / "outputs" / (args.label or "")
     for number, item in enumerate(manifest, start=1):
         data = (args.data / "files" / item["id"]).read_bytes()
         for system in systems:
@@ -251,6 +297,7 @@ def write_csv(rows: list[dict[str, Any]], path: Path) -> None:
         "pages",
         "engines_used",
         "reason",
+        "quality",
     ]
     with path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)
@@ -332,6 +379,8 @@ def coverage_line(rows: list[dict[str, Any]], systems: list[str]) -> str:
 def verdict(rows: list[dict[str, Any]], systems: list[str], metric: str) -> str:
     """Does the router beat every single engine, overall and per category?"""
     singles = [s for s in systems if s != ROUTER]
+    if not singles or ROUTER not in systems:
+        return f"No router-vs-single comparison for {metric} in this partial run."
 
     def avg(system: str, category: str | None) -> float:
         chosen = [
@@ -363,6 +412,43 @@ def verdict(rows: list[dict[str, Any]], systems: list[str], metric: str) -> str:
         + "."
     )
     return " ".join(lines)
+
+
+BAD_BELOW = (0.99, 0.90, 0.50)  # "bad output" = text accuracy below this
+
+
+def fooled_counts(rows: list[dict[str, Any]], bad_below: float, threshold: float) -> dict[str, int]:
+    """How the text-quality check did against the truth, over outputs that have both numbers."""
+    graded = [r for r in rows if r.get("quality") is not None and r["text_acc"] is not None]
+    bad = [r for r in graded if r["text_acc"] < bad_below]
+    passed = [r for r in graded if r["quality"] >= threshold]
+    fooled = [r for r in bad if r["quality"] >= threshold]
+    return {"outputs": len(graded), "bad": len(bad), "passed": len(passed), "fooled": len(fooled)}
+
+
+def quality_table(rows: list[dict[str, Any]], threshold: float) -> str:
+    """Every SINGLE-engine output that produced text. The router is left out: it only repeats
+    what an engine produced, after already using the quality check."""
+    singles = [r for r in rows if r["system"] != ROUTER]
+    lines = [
+        "### How often the text-quality check is fooled",
+        "",
+        f"The check accepts an output that scores at least {threshold}. It never sees the truth.",
+        "Counted over every single-engine output that produced some text.",
+        "",
+        "| a bad output means text accuracy below | outputs | bad | bad but accepted | "
+        "share of bad outputs that fool it | share of accepted outputs that are bad |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for bar in BAD_BELOW:
+        c = fooled_counts(singles, bar, threshold)
+        share_bad = f"{c['fooled'] / c['bad']:.0%}" if c["bad"] else "-"
+        share_passed = f"{c['fooled'] / c['passed']:.0%}" if c["passed"] else "-"
+        lines.append(
+            f"| {bar:.2f} | {c['outputs']} | {c['bad']} | {c['fooled']} | "
+            f"{share_bad} | {share_passed} |"
+        )
+    return "\n".join(lines)
 
 
 def robustness(rows: list[dict[str, Any]], manifest_path: Path) -> str:
@@ -440,6 +526,8 @@ def write_report(
         ),
         "",
     ]
+    if any(r.get("quality") is not None and r["system"] != ROUTER for r in rows):
+        parts += [quality_table(rows, Config().quality_threshold), ""]
     parts += ["**Router vs single engines.** " + verdict(rows, systems, "text_acc")]
     parts += [verdict(rows, systems, "table_acc")]
     if has_fields:
@@ -455,11 +543,16 @@ def main() -> None:
     parser.add_argument(
         "--fields", action="store_true", help="also run field extraction (needs Ollama)"
     )
-    parser.add_argument("--only", nargs="*", help="only these document types")
+    parser.add_argument(
+        "--types", "--only", nargs="*", help="quick mode: only these types, e.g. rotated,photo"
+    )
+    parser.add_argument("--label", help="name of this partial run (its results folder)")
     parser.add_argument("--systems", nargs="*", help="only these systems (engine names, router)")
     parser.add_argument("--limit", type=int, help="only the first N files")
     parser.add_argument("--no-warmup", action="store_true")
     args = parser.parse_args()
+    args.types = parse_types(args.types)
+    args.out, args.label = output_dir(args)
     args.out.mkdir(parents=True, exist_ok=True)
 
     started = time.perf_counter()

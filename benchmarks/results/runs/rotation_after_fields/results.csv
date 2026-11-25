@@ -1,0 +1,13 @@
+system,doc,category,status,text_acc,word_recall,table_acc,field_acc,seconds,pages,engines_used,reason,quality
+router,rotated_1_invoice_90.pdf,rotated,ok,1.0,1.0,0.0,1.0,9.704,1,rapidocr,,1.0
+router,rotated_2_memo_90.pdf,rotated,ok,1.0,1.0,,,9.015,1,rapidocr,,1.0
+router,rotated_3_invoice_180.pdf,rotated,ok,1.0,1.0,0.0,1.0,9.111,1,rapidocr,,1.0
+router,rotated_4_ddr_180.pdf,rotated,ok,1.0,1.0,0.0,1.0,9.011,1,rapidocr,,1.0
+router,rotated_5_ddr_270.pdf,rotated,ok,1.0,1.0,0.0,1.0,8.765,1,rapidocr,,1.0
+router,rotated_6_invoice_270.pdf,rotated,ok,1.0,1.0,0.0,1.0,8.925,1,rapidocr,,1.0
+router,photo_1_invoice_0.jpg,photo,ok,1.0,1.0,0.0,1.0,9.429,1,rapidocr,,1.0
+router,photo_2_ddr_0.jpg,photo,ok,0.9674,1.0,0.0,1.0,8.846,1,rapidocr,,1.0
+router,photo_3_memo_0.jpg,photo,ok,1.0,1.0,,,8.996,1,rapidocr,,1.0
+router,photo_4_invoice_90.jpg,photo,ok,1.0,1.0,0.0,1.0,9.736,1,rapidocr,,1.0
+router,photo_5_ddr_180.jpg,photo,ok,0.9625,1.0,0.0,1.0,9.499,1,rapidocr,,1.0
+router,photo_6_memo_270.jpg,photo,ok,1.0,1.0,,,9.435,1,rapidocr,,1.0

@@ -1,5 +1,6 @@
 """Tests for the benchmark itself: the scores, the sample generator, and the report maths."""
 
+import argparse
 import importlib.util
 import sys
 from datetime import date
@@ -123,9 +124,59 @@ def test_verdict_names_categories_where_a_single_engine_wins():
     assert "html" in bench.verdict(rows, ["a", "b", "router"], "text_acc")
 
 
+def test_verdict_copes_with_a_router_only_quick_run():
+    assert "partial run" in bench.verdict([row("router", "docx")], ["router"], "text_acc")
+
+
+def test_fooled_counts():
+    outputs = [
+        {"quality": 1.0, "text_acc": 0.2},  # bad and accepted: fooled
+        {"quality": 0.3, "text_acc": 0.2},  # bad and rejected: caught
+        {"quality": 1.0, "text_acc": 1.0},  # good and accepted
+        {"quality": None, "text_acc": 0.0},  # produced nothing: not counted
+    ]
+    assert bench.fooled_counts(outputs, 0.9, 0.55) == {
+        "outputs": 3, "bad": 2, "passed": 2, "fooled": 1
+    }  # fmt: skip
+
+
 def test_markdown_table_bolds_the_best_value():
     table = bench.markdown_table(ROWS, ["a", "b", "router"], "text_acc", "T")
     assert "| docx | **0.90** | 0.60 | **0.90** |" in table
+
+
+# ------------------------------------------------------------------ quick mode
+
+
+def test_types_accept_commas_or_spaces():
+    assert bench.parse_types(["rotated,photo"]) == ["rotated", "photo"]
+    assert bench.parse_types(["rotated", "photo,"]) == ["rotated", "photo"]
+    assert bench.parse_types(None) == []
+
+
+def test_select_types_filters_and_rejects_typos():
+    manifest = [{"category": "docx"}, {"category": "photo"}]
+    assert bench.select_types(manifest, ["photo"]) == [{"category": "photo"}]
+    assert bench.select_types(manifest, []) == manifest
+    with pytest.raises(SystemExit, match="phto"):
+        bench.select_types(manifest, ["phto"])
+
+
+@pytest.mark.parametrize(
+    "options, folder",
+    [
+        ({}, "."),
+        ({"types": ["rotated", "photo"]}, "runs/rotated_photo"),
+        ({"types": ["rotated"], "label": "before"}, "runs/before"),
+        ({"systems": ["router"]}, "runs/partial"),
+        ({"limit": 3}, "runs/partial"),
+    ],
+)
+def test_a_partial_run_never_overwrites_the_full_results(tmp_path, options, folder):
+    args = argparse.Namespace(
+        out=tmp_path, **{"types": [], "systems": None, "limit": None, "label": None, **options}
+    )
+    assert bench.output_dir(args)[0] == tmp_path / folder
 
 
 # ------------------------------------------------------------------ sample generator
@@ -150,7 +201,7 @@ def corpus(make_samples):
 def test_corpus_has_every_kind_of_file_the_spec_asks_for(corpus):
     categories = {e.category for e in corpus}
     assert categories == set(bench.CATEGORY_ORDER) | {"corrupt"}
-    assert len(corpus) == 36
+    assert len(corpus) == 48
 
 
 def test_same_seed_gives_identical_bytes_and_other_seed_does_not(make_samples, corpus):

@@ -291,14 +291,30 @@ SCAN_LEVELS = {  # angle (degrees), blur radius, noise strength, dpi
 }
 
 
-def scanned_bytes(source_pdf: bytes, level: str, seed: int) -> bytes:
-    """Render every page of a PDF to a picture, degrade it, save as a picture-only PDF."""
+# turning a picture by whole quarter turns loses nothing; PIL names them counter-clockwise
+_CLOCKWISE = {
+    90: Image.Transpose.ROTATE_270,
+    180: Image.Transpose.ROTATE_180,
+    270: Image.Transpose.ROTATE_90,
+}
+
+
+def turned(img: Image.Image, clockwise: int) -> Image.Image:
+    return img.transpose(_CLOCKWISE[clockwise]) if clockwise else img
+
+
+def scanned_bytes(source_pdf: bytes, level: str, seed: int, turn: int = 0) -> bytes:
+    """Render every page of a PDF to a picture, degrade it, save as a picture-only PDF.
+
+    `turn` lays the paper on the scanner sideways or upside down (degrees clockwise). The PDF
+    gets no /Rotate flag, so nothing in the file says that the page is turned.
+    """
     import pypdfium2 as pdfium
 
     angle, blur, noise, dpi = SCAN_LEVELS[level]
     pdf = pdfium.PdfDocument(source_pdf)
     images = [
-        _degrade(pdf[i].render(scale=dpi / 72).to_pil(), seed + i, angle, blur, noise)
+        turned(_degrade(pdf[i].render(scale=dpi / 72).to_pil(), seed + i, angle, blur, noise), turn)
         for i in range(len(pdf))
     ]
     pdf.close()
@@ -312,6 +328,67 @@ def scanned_bytes(source_pdf: bytes, level: str, seed: int) -> bytes:
         creationDate=FIXED_TIME.timetuple(),
         modDate=FIXED_TIME.timetuple(),
     )
+    return buf.getvalue()
+
+
+def _perspective(
+    source: list[tuple[float, float]], target: list[tuple[float, float]]
+) -> list[float]:
+    """The 8 numbers PIL needs to map the `target` corners back onto the `source` corners."""
+    rows, wanted = [], []
+    for (x, y), (u, v) in zip(target, source, strict=True):
+        rows.append([x, y, 1, 0, 0, 0, -u * x, -u * y])
+        rows.append([0, 0, 0, x, y, 1, -v * x, -v * y])
+        wanted += [u, v]
+    return np.linalg.solve(np.array(rows, float), np.array(wanted, float)).tolist()
+
+
+def photo_bytes(source_pdf: bytes, seed: int, turn: int = 0) -> bytes:
+    """Page 1 as a phone photo: lying on a desk, seen at an angle, unevenly lit, saved as JPEG.
+
+    An imitation, not a real photo. `turn` = how the paper lies, in degrees clockwise.
+    The JPEG has no EXIF orientation tag (as after most messaging apps strip it).
+    """
+    import pypdfium2 as pdfium
+
+    pdf = pdfium.PdfDocument(source_pdf)
+    page = pdf[0].render(scale=200 / 72).to_pil().convert("L")
+    pdf.close()
+    page = turned(page, turn)
+
+    rng = np.random.default_rng(seed)
+    width, height = page.size
+    margin = int(0.09 * max(width, height))
+    size = (width + 2 * margin, height + 2 * margin)
+    flat = [(0, 0), (width, 0), (width, height), (0, height)]
+    corners = [
+        (x + margin + rng.uniform(-0.6, 0.6) * margin, y + margin + rng.uniform(-0.6, 0.6) * margin)
+        for x, y in flat
+    ]
+    coefficients = _perspective(flat, corners)
+    how = (Image.Transform.PERSPECTIVE, coefficients, Image.Resampling.BICUBIC)
+    warped = page.transform(size, *how)
+    paper = Image.new("L", page.size, 255).transform(size, *how)
+    desk = Image.new("L", size, 105)
+    desk.paste(warped, (0, 0), paper)
+
+    # uneven light: brighter on one side, darker on the other, plus one soft shadow
+    xs, ys = np.meshgrid(np.linspace(0, 1, size[0]), np.linspace(0, 1, size[1]))
+    direction = rng.uniform(0, 2 * np.pi)
+    slope = (xs - 0.5) * np.cos(direction) + (ys - 0.5) * np.sin(direction)
+    light = 0.80 + 0.28 * slope
+    cx, cy = rng.uniform(0.2, 0.8), rng.uniform(0.2, 0.8)
+    light *= 1 - 0.20 * np.exp(-((xs - cx) ** 2 + (ys - cy) ** 2) / 0.05)
+    pixels = np.asarray(desk, dtype=np.float32) * light
+
+    photo = Image.fromarray(np.clip(pixels, 0, 255).astype(np.uint8))
+    photo = photo.filter(ImageFilter.GaussianBlur(0.9))
+    pixels = np.asarray(photo, dtype=np.float32) + rng.normal(0, 4.0, (size[1], size[0]))
+    tinted = np.stack([pixels * 1.03, pixels, pixels * 0.93], axis=-1)  # warm indoor light
+    photo = Image.fromarray(np.clip(tinted, 0, 255).astype(np.uint8))
+    photo.thumbnail((2000, 2000), Image.Resampling.LANCZOS)
+    buf = io.BytesIO()
+    photo.save(buf, format="JPEG", quality=72)
     return buf.getvalue()
 
 
@@ -778,6 +855,53 @@ def build_corpus(seed: int = 1234) -> list[Entry]:
             note="DOCX cut off",
         )
     )
+
+    # New types go at the END: each file's random stream is numbered in creation order, so
+    # adding here keeps every earlier file byte-identical.
+
+    # ---- scans lying sideways or upside down
+    for i, (spec, turn) in enumerate(
+        [
+            (make_invoice(rng(), 4), 90),
+            (make_memo(rng()), 90),
+            (make_invoice(rng(), 5), 180),
+            (make_ddr(rng()), 180),
+            (make_ddr(rng()), 270),
+            (make_invoice(rng(), 4), 270),
+        ]
+    ):
+        data = scanned_bytes(pdf_bytes(spec), "medium", seed + 120 + i, turn=turn)
+        entries.append(
+            entry_from(
+                spec,
+                "rotated",
+                f"rotated_{i + 1}_{spec.kind}_{turn}.pdf",
+                data,
+                note=f"turned {turn} degrees clockwise",
+            )
+        )
+
+    # ---- phone-photo style pages: three upright, three turned
+    for i, (spec, turn) in enumerate(
+        [
+            (make_invoice(rng(), 4), 0),
+            (make_ddr(rng()), 0),
+            (make_memo(rng()), 0),
+            (make_invoice(rng(), 5), 90),
+            (make_ddr(rng()), 180),
+            (make_memo(rng()), 270),
+        ]
+    ):
+        data = photo_bytes(pdf_bytes(spec), seed + 140 + i, turn=turn)
+        entries.append(
+            entry_from(
+                spec,
+                "photo",
+                f"photo_{i + 1}_{spec.kind}_{turn}.jpg",
+                data,
+                note=f"phone-photo style, turned {turn} degrees clockwise",
+            )
+        )
     return entries
 
 
