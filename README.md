@@ -5,10 +5,17 @@
 > Status: early (v0.1). Parsing + router, field extraction, a web UI and a synthetic benchmark work.
 > The API and the Docker image are not built yet. Apache-2.0, fully local by default.
 
+> **Key results and weak spots**
+> - Router text **0.99**, best single engine 0.51 (34 readable files, before the rotation fix): mostly breadth. Per type it mostly ties; it loses on mixed pages ([comparison](#router-against-single-engines)).
+> - Rotation fix: text on turned scans went from **0.19 to 1.00**, at about 3 times the time ([rotation](#rotated-scans-and-phone-photos)).
+> - Fresh seed 5678: text **0.98**, tables **0.62**, fields **1.00** on easy fields, so a ceiling ([fresh-seed test](#1-fresh-seed-test-seed-5678)).
+> - Weak: [OCR tables score 0.00](#5-ocr-tables-score-000); the quality score [accepted 37 of 41 bad outputs](#how-often-the-quality-score-is-fooled) (old pre-fix result); [photos did worse on the fresh seed](#1-fresh-seed-test-seed-5678).
+> - Everything is **synthetic**: files made by this project.
+
 ## Quickstart
 
 ```bash
-git clone <this repo> && cd doctordoc
+git clone https://github.com/alphindas/DoctorDoc.git && cd DoctorDoc
 uv venv && source .venv/bin/activate
 uv pip install -e ".[ocr,docling,markitdown]"   # extras are optional: see `doctordoc engines`
 
@@ -121,7 +128,7 @@ not in the document text (the model made it up): `page` and `source_text` are th
    |---|---|
    | digital PDF page | `docling` -> `pdf_text` |
    | mixed PDF page | `docling` -> `pdf_text`, plus OCR; the better result is kept and text that only the other engine found is merged in (`merge_mixed_pages`) |
-   | scanned PDF page / image | `paddle_vl` -> `rapidocr` -> `tesseract` -> `cloud_vlm` |
+   | scanned PDF page / image | `paddle_vl` -> `rapidocr` -> `tesseract` -> `cloud_vlm` (`paddle_vl` is listed by default but skipped unless installed and able to use a GPU, or, with no GPU in use, `paddle_on_cpu: true` is set; `cloud_vlm` is skipped while cloud is off) |
    | garbled PDF page | OCR chain first, `pdf_text` last |
    | DOCX / PPTX | `docling` -> `native` -> `markitdown` |
    | HTML | `native` -> `docling` -> `markitdown` |
@@ -164,9 +171,10 @@ work as designed", not as accuracy on your documents.
 
 These tables are from the full run on the first 36 files, **before** rotation correction was added.
 
-36 synthetic files (made-up companies, wells and numbers; fixed seed; ground truth for every file), CPU only,
-every installed engine run **alone** and then the **router**. Text = 1 minus edit distance on letters and
-digits; fields = `llama3.2:3b` through the same pipeline. Full tables, per-file CSV and speed:
+36 synthetic files (made-up companies, wells and numbers; fixed seed; ground truth for every file), parsing and OCR on
+CPU (the field model runs in Ollama and may use a GPU), every installed engine run **alone** and then the **router**.
+Text = 1 minus edit distance on letters and digits; fields = `llama3.2:3b` through the same pipeline. Full tables,
+per-file CSV and speed:
 [`benchmarks/results/RESULTS.md`](benchmarks/results/RESULTS.md).
 
 | Document type | best single engine | router | what a single engine gets wrong |
@@ -222,8 +230,10 @@ OCR text, and a picture covering under 35% of a page (e.g. a stamp) never trigge
 
 ### Rotated scans and phone photos
 
-12 more files: 6 scans turned 90, 180 or 270 degrees, and 6 **imitation** phone photos made by a script (tilted view,
-uneven light, JPEG), 3 upright and 3 turned. They are not real photos. Router only:
+12 more files (seed 1234): 6 scans turned 90, 180 or 270 degrees, and 6 **imitation** phone photos made by a script (tilted view,
+uneven light, JPEG), 3 upright and 3 turned. They are not real photos. Router only (result files:
+[before](benchmarks/results/runs/rotation_before/RESULTS.md),
+[after](benchmarks/results/runs/rotation_after_earlystop/RESULTS.md)):
 
 | files | text, no correction | text, with correction | fields, no correction | fields, with correction | seconds per page, none / always 4 reads / with early stop |
 |---|---:|---:|---:|---:|---|
@@ -266,6 +276,9 @@ texts kept locally (git-ignored), so others cannot rerun this check. Source:
   the 6** bad outputs of that kind and missed both from `garbled_3`.
 - The "after" row is better because there were fewer bad outputs, **not** because the check improved.
 - With a stricter bar (bad = under 0.99), it accepted 54/58 (93%) of bad outputs before the fix.
+- In the saved seed 1234 runs on rotated and photo files (RapidOCR and Tesseract alone), it accepted **20 of 20** bad outputs
+  [before the rotation fix](benchmarks/results/runs/rotation_before/results.csv) and **4 of 4**
+  [after it](benchmarks/results/runs/rotation_after_earlystop/RESULTS.md).
 - These shares depend on which files are in the set. **A high quality score does not mean the text is right.**
 
 ### Is Docling better than the simple reader on digital PDFs?
@@ -322,6 +335,9 @@ setting does not control the Ollama model that reads the fields. Results:
 - **Photos did worse than on seed 1234:** text was 0.95 for upright and 0.87 for turned photos, against 0.99 for both
   [before](#rotated-scans-and-phone-photos). Times were also higher: upright photos 5.9 s against 3.0 s, turned photos
   14.6 s against 10.6 s, and turned scans 11.8 s against 9.7 s. These are different files; the cause was not checked.
+- **Rotation:** the early-stop cutoff of 0.75 was set before this run and was not changed. The run scored 1.00 on its
+  rotated files; it has no "before" run to compare with.
+- **Quality score:** the three files with text under 0.90 (0.62, 0.75 and 0.86) all had a quality score of **1.00**.
 - **Weak spots in tables:** 0.00 for scanned, garbled, rotated and photo files. These are the files read by OCR.
 - **Small sample:** only 2 to 6 files per type (6 rotated; 6 photo; 4 each digital and scanned; 3 each garbled and
   mixed; 2 of every other type, including the 2 broken files). Fewer have tables or fields to score.
@@ -331,38 +347,23 @@ setting does not control the Ollama model that reads the fields. Results:
 
 ### 2. Rotation fix, before and after
 
-On the 6 turned scans of seed 1234, router text went from **0.19 to 1.00**
-([before](benchmarks/results/runs/rotation_before/RESULTS.md),
-[after](benchmarks/results/runs/rotation_after_earlystop/RESULTS.md)). The cost: a turned page took about **3 times
-longer** (3.2 s before, 9.7 s after). The early-stop cutoff of 0.75 was set before the seed 5678 run and was not
-changed. That run scored 1.00 on its rotated files; it has no "before" run to compare with.
+Turned scans (seed 1234): text **0.19 to 1.00** at about **3 times** the time ([details](#rotated-scans-and-phone-photos)). On seed 5678
+the worst text score was a turned photo (0.62) and photos scored lower than before: the fix is shown on synthetic scans, but only partly on photos (cause not checked).
 
 ### 3. The quality score is weak
 
-It can accept text that is wrong. "Bad" here means text accuracy under 0.90.
-
-- On the larger seed 1234 set (outputs from 44 files), the old **pre-fix** result is **37 of 41** bad outputs accepted;
-  after the rotation fix it is **19 of 23**. These are **not saved in the main results**. Source:
-  [re-check from saved texts](benchmarks/results/recheck_quality_from_saved_outputs.md); details
-  [above](#how-often-the-quality-score-is-fooled).
-- Of the 6 bad outputs from junk hidden text layers, it caught **4**. Those were the only bad outputs it caught.
-- In the saved runs on rotated and photo files (RapidOCR and Tesseract alone), it accepted **20 of 20** bad outputs
-  [before the rotation fix](benchmarks/results/runs/rotation_before/results.csv) and **4 of 4**
-  [after it](benchmarks/results/runs/rotation_after_earlystop/RESULTS.md).
-- On seed 5678, the three files under 0.90 (0.62, 0.75 and 0.86) all had a quality score of **1.00**.
+It can accept wrong text: **37 of 41** bad outputs in the old pre-fix result, **19 of 23** after the rotation fix
+(not saved in the main results; [details and source](#how-often-the-quality-score-is-fooled)).
 
 ### 4. Docling is better only for tables
 
-On 5 files each of new, simple digital PDFs
-([CSV](benchmarks/results/runs/digital_pdfs/invoice_ddr_memo_rates_2page_invoice_2page.csv)), Docling scored 1.00 on
-table cells and the simple reader 0.00, with the same text score. But Docling merges lines: the share of lines kept
-separate was **0.225** on invoices and **0.10** on drilling reports, against 1.00 for the simple reader (two-page
-invoices: 0.62 against 1.00; memos: 1.00 for both).
+On new, simple digital PDFs it scored 1.00 on table cells against 0.00, with the same text score, but it merged lines
+([details](#is-docling-better-than-the-simple-reader-on-digital-pdfs)).
 
 ### 5. OCR tables score 0.00
 
 In every saved result CSV, each RapidOCR or Tesseract output that had a table to find scored 0.00 for table cells.
-The OCR engines here return lines of text, not table structure.
+The OCR engines here return lines of text, not table structure ([limitations](#known-limitations)).
 
 ## Roadmap
 
@@ -393,9 +394,10 @@ Honest list, from testing on synthetic documents so far:
 - OCR reads a phone photo mostly well but can swap look-alike characters and mix up the order of lines (seen during development, no result file saved).
 - Reading order is not always right: for example, Docling can put a PDF's title block after the body (seen during development, no result file saved).
 - Excel formulas without a saved result (a file written by a script, not saved by Excel) read as empty cells (seen during development, no result file saved).
-- The UI "Copy" button opens a small box with Streamlit's own copy icon (two clicks), not a one-click button. The UI was checked in Chromium only (seen during development, no result file saved); other browsers and phones are not tested.
+- The UI "Copy" button opens a small box with Streamlit's own copy icon (two clicks), not a one-click button (seen during development, no result file saved). The UI was checked in Chromium only (seen during development, no result file saved); other browsers and phones are not tested.
 - Engine comparison and the page picture work for uploads and for files directly inside a ZIP or email, not for deeper nesting.
 - **Field extraction has time and length limits.** A model reading junk text can keep writing for many minutes (seen during development, no result file saved), so by default an answer stops at 4096 tokens (`llm.max_output_tokens`), a call at 300 s (`llm.timeout`) and one document at 600 s in total (`llm.max_seconds_per_document`), with one retry. A document that hits a limit returns an error and no fields, not a partial result. Real long documents can hit them too: long item lists, or a CPU-only machine, may need higher limits (seen during development, no result file saved).
+- **Long documents have no context-size guard.** Document text is split by characters (`llm.max_chars_per_call`, 12000), by page and then at blank lines. A block with no blank line, such as a large table, is not cut, however long it is. DoctorDoc passes `llm.num_ctx` (8192) to Ollama but never checks the prompt against it: it does not count tokens, and it does not read or log Ollama's prompt token count. The instructions, the schema and, on a retry, the previous answer come on top of the document text. If the server dropped part of a long prompt, DoctorDoc would not notice. A split document gets a warning, and each piece is a separate model call: the first value found for a field is kept, and a list item from a later piece that exactly matches one already collected is dropped, even if the document really repeats it. (From reading the code; not tested with a real model.)
 - OCR engines sometimes glue words together across wide gaps (seen during development, no result file saved). Grounding tolerates this, but the Markdown shows it.
 - Field extraction uses a small local model (`llama3.2:3b` by default) and has only been measured on small synthetic sets (invoices and drilling reports).
 - `.msg` (Outlook) attachment reading is not tested: this repo has no `.msg` sample file and no test for it.
