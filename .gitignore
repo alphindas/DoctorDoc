@@ -41,4 +41,5 @@ doctordoc.yaml
 
 # benchmark: the sample set is rebuilt from a fixed seed; only the results are kept
 benchmarks/data/
+benchmarks/data_seed5678/
 benchmarks/results/llm_cache.json

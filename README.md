@@ -222,7 +222,7 @@ uneven light, JPEG), 3 upright and 3 turned. They are not real photos. Router on
   with RapidOCR and 5 of 16 with Tesseract, because both quietly straighten sideways lines and read them confidently,
   in the wrong order. Counting confidence only for text that lies horizontally chose right on 16 of 16.
 - **These numbers are optimistic.** The angle rule and the 0.75 cutoff were designed on pages from this same set.
-  They have **not** yet been tested on a new set.
+  A later [fresh-seed run](#benchmark-findings) used new files from the same generator, with the code unchanged.
 
 ### How often the quality score is fooled
 
@@ -260,6 +260,67 @@ that stay a block of their own.
 - The 0.97 against 1.00 on invoice fields is **one** field; it is too small a difference to mean anything.
 - Docling stays first because the simple reader finds no tables at all. On pages without tables it adds only time.
 - All of these are simple one-column pages. **Multi-column and complex layouts were not tested.**
+
+## Benchmark findings
+
+All files are synthetic and made by this project.
+
+### 1. Fresh-seed test (seed 5678)
+
+New files from the same generator: 48 files (46 good and 2 deliberately broken), router only, 13.1 min, code at commit
+`a3c7653`, nothing tuned afterwards. Parsing and OCR ran with the GPU setting off; that setting does not control the
+Ollama model that reads the fields. Results:
+[`seed5678-router-fields`](benchmarks/results/runs/seed5678-router-fields/RESULTS.md).
+
+| measure | result |
+|---|---|
+| text, 46 good files | 0.98 |
+| table cells, 37 files with tables | 0.62 |
+| fields, 26 files with fields | 1.00 |
+| broken files that gave a clear error | 2 of 2 |
+| good files wrongly rejected | 0 |
+| timeouts | 0 seen: all 46 good files finished, and no field file lost a point (a failed field call scores 0) |
+
+- **Weak spots in text:** photo 0.91, scanned 0.94, email 0.95. The worst single files were a turned photo (0.62), a
+  heavily degraded scan (0.75) and an upright photo (0.86).
+- **Weak spots in tables:** 0.00 for scanned, garbled, rotated and photo files. These are the files read by OCR.
+- **Small sample:** only 2 to 6 files per type (6 rotated; 6 photo; 4 each digital and scanned; 3 each garbled and
+  mixed; 2 of every other type, including the 2 broken files). Fewer have tables or fields to score.
+- **Field accuracy 1.00 is a ceiling:** the fields are synthetic and easy, so this score cannot show how the model
+  does on harder documents.
+- This run did **not** repeat the router against single engines comparison.
+
+### 2. Rotation fix, before and after
+
+On the 6 turned scans of seed 1234, router text went from **0.19 to 1.00**
+([before](benchmarks/results/runs/rotation_before/RESULTS.md),
+[after](benchmarks/results/runs/rotation_after_earlystop/RESULTS.md)). The cost: a turned page took about **3 times
+longer** (3.2 s before, 9.7 s after). The early-stop cutoff of 0.75 was set before the seed 5678 run and was not
+changed. That run scored 1.00 on its rotated files; it has no "before" run to compare with.
+
+### 3. The quality score is weak
+
+It can accept text that is wrong. In the saved seed 1234 runs on rotated and photo files (RapidOCR and Tesseract
+alone, "bad" = text under 0.90), it accepted **20 of 20** bad outputs
+[before the rotation fix](benchmarks/results/runs/rotation_before/results.csv) and **4 of 4**
+[after it](benchmarks/results/runs/rotation_after_earlystop/RESULTS.md). On seed 5678, the three files under 0.90
+(0.62, 0.75 and 0.86) all had a quality score of **1.00**.
+
+The share accepted across the larger 46-file set is **not measured** in any saved result file. This includes the
+83-90% figures [above](#how-often-the-quality-score-is-fooled): the full run's CSV has no quality scores.
+
+### 4. Docling is better only for tables
+
+On 5 files each of new, simple digital PDFs
+([CSV](benchmarks/results/runs/digital_pdfs/invoice_ddr_memo_rates_2page_invoice_2page.csv)), Docling scored 1.00 on
+table cells and the simple reader 0.00, with the same text score. But Docling merges lines: the share of lines kept
+separate was **0.23** on invoices and **0.10** on drilling reports, against 1.00 for the simple reader (two-page
+invoices: 0.62 against 1.00; memos: 1.00 for both).
+
+### 5. OCR tables score 0.00
+
+In every saved result CSV, each RapidOCR or Tesseract output that had a table to find scored 0.00 for table cells.
+The OCR engines here return lines of text, not table structure.
 
 ## Roadmap
 
