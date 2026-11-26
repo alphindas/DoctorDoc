@@ -360,7 +360,9 @@ the fields. Results:
 - **Small sample:** only 2 to 6 files per type (6 rotated; 6 photo; 4 each digital and scanned; 3 each garbled and
   mixed; 2 of every other type, including the 2 broken files). Fewer have tables or fields to score.
 - **Field accuracy 1.00 is a ceiling:** the fields are synthetic and easy, so this score cannot show how the model
-  does on harder documents.
+  does on harder documents. On `examples/invoice_digital.pdf`, a real run put the invoice's total under `subtotal`
+  (not flagged) and left `total` empty (flagged), the same in 4 runs
+  ([saved output of the first run](docs/examples/extract_invoice_digital.json)).
 - This run did **not** repeat the router against single engines comparison.
 
 ### 2. Rotation fix, before and after
@@ -392,6 +394,7 @@ Ideas that are **not built**:
 - **A second check to catch wrong text**, because a passing quality score does not mean the text is right: it caught
   only 4 of 6 bad outputs from junk hidden text layers ([numbers](#how-often-the-quality-score-is-fooled)). For
   example, comparing two engines on the same page. None has been tried or measured.
+- **Test field extraction on more invoice layouts.** Not built, not measured.
 - An API, a Docker image and a published CI setup.
 
 ## Screenshots
@@ -421,7 +424,7 @@ Honest list, from testing on synthetic documents so far:
   - **Why only 1024 is kept for the answer:** 12000 characters of this project's sample text, plus instructions, came to 5740-6771 tokens (measured during development, no result file saved). That is more than 4096, which is `num_ctx` minus the longest allowed answer (4096). So a prompt can be sent and its answer still not fit, for example with a long item list.
   - **After the reply:** Ollama's `prompt_eval_count` and `eval_count` are logged and kept in `result.llm_calls` (not in the JSON report). If the prompt count reaches the safe limit, looks like a cut (about half of `num_ctx`), or prompt plus answer is more than `num_ctx`, there is a warning, every field is marked for review, and `needs_review` also lists `document` (a `prompt_length` entry in `validation_issues` says why).
   - **Not covered:** the estimate is not the model's tokenizer. It can refuse text that would fit (for example long Chinese, Japanese or Hindi text) and can guess too low (for example Malayalam or tables full of numbers). The check after the reply is the backstop; its cut pattern was seen with this one Ollama version and model, and it needs the server to report the counts. OpenAI-compatible servers are not guarded.
-- **Merging the pieces of a long document can lose data.** Each piece is a separate model call, and a split document gets a warning. The first non-empty value of a field wins; a different later value is ignored without notice. A list item from a later piece that exactly matches one already collected is dropped, even if the document really repeats it: two identical rig day-rate lines that land in different pieces become one. Identical items within the first piece that has items are kept. The invoice and receipt rules flag this only if a subtotal was extracted and the lines no longer add up to it; the drilling and form schemas have no rule that checks for a lost item. Because long blocks are now split, repeated rows in a large table, which used to go in one call, can be lost this way too. (Checked with a scripted model during development, no result file saved.)
+- **Merging the pieces of a long document has limits.** Each piece is a separate model call, and a split document gets a warning. Every list item from every piece is kept, including repeated ones: two identical rig day-rate lines stay two. The risk is the other way: if the model lists a repeated header or total row as an item more than once, it can be counted twice. The invoice and receipt rules flag this only if a subtotal was extracted and the lines do not add up to it; the drilling and form schemas have no rule that checks for an extra item. For a single field, the first non-empty value is still kept. If a later piece gives a different non-empty value, the field goes to `needs_review` and `validation_issues` gets a `merge_conflict` error that shows both values. Its confidence is not lowered for this, and an empty later value does not count. The comparison is exact, so a small difference in spelling or capitals is flagged too. Different values for the same entry in two lists are not compared: both entries are kept. (Checked with a scripted model during development, no result file saved.)
 - OCR engines sometimes glue words together across wide gaps (seen during development, no result file saved). Grounding tolerates this, but the Markdown shows it.
 - Field extraction uses a small local model (`llama3.2:3b` by default) and has only been measured on small synthetic sets (invoices and drilling reports).
 - `.msg` (Outlook) attachment reading is not tested: this repo has no `.msg` sample file and no test for it.
