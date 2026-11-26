@@ -217,6 +217,67 @@ def test_long_documents_are_split_by_page_and_merged():
     assert result.field("total").source.page == 2
 
 
+def run_two_pieces(first, second):
+    """Extract from two pages that are too long to share one model call."""
+    pages = [
+        Page(number=n, blocks=[Block(type=BlockType.PARAGRAPH, text=text + " filler" * 35)])
+        for n, text in [(1, "Invoice INV-7 Total: 55.00"), (2, "Invoice INV-8 Total: 99.00")]
+    ]
+    cfg = Config()
+    cfg.llm.max_chars_per_call = 300
+    llm = FakeLLM(first, second)
+    result = extract(Document(source="x", pages=pages), Invoice, cfg, llm=llm.client())
+    assert result.error is None and len(llm.requests) == 2
+    return result
+
+
+DAY_RATE = {"description": "Rig day rate", "quantity": 1.0, "unit_price": 900.0, "amount": 900.0}
+
+
+def test_identical_line_items_from_different_pieces_are_both_kept():
+    result = run_two_pieces({"line_items": [DAY_RATE]}, {"line_items": [DAY_RATE]})
+    assert result.data["line_items"] == [DAY_RATE, DAY_RATE]
+
+
+def test_identical_line_items_in_one_later_piece_are_both_kept():
+    mud = {**DAY_RATE, "description": "Mud"}
+    result = run_two_pieces({"line_items": [mud]}, {"line_items": [DAY_RATE, DAY_RATE]})
+    assert result.data["line_items"] == [mud, DAY_RATE, DAY_RATE]
+
+
+def test_conflicting_values_are_flagged_without_changing_value_or_confidence():
+    first = {"invoice_number": "INV-7", "total": 55.0}
+    agreed = run_two_pieces(first, first)
+    clash = run_two_pieces(first, {"invoice_number": "INV-7", "total": 99.0})
+    assert clash.data == agreed.data and clash.data["total"] == 55.0
+    assert clash.field("total").confidence == agreed.field("total").confidence
+    assert clash.field("total").validation_score == 1.0
+    assert clash.field("total").needs_review and not agreed.field("total").needs_review
+    assert "total" in clash.needs_review and "total" not in agreed.needs_review
+    assert not clash.field("invoice_number").needs_review  # the same value twice is fine
+    [issue] = [i for i in clash.issues if i.rule == "merge_conflict"]
+    assert (issue.path, issue.severity) == ("total", "error")
+    assert "55.0" in issue.message and "99.0" in issue.message
+    assert not [i for i in agreed.issues if i.rule == "merge_conflict"]
+
+
+@pytest.mark.parametrize("empty", [None, ""])
+def test_an_empty_later_value_is_not_a_conflict(empty):
+    result = run_two_pieces(
+        {"invoice_number": "INV-7", "total": 55.0, "vendor_name": "Acme"},
+        {"total": None, "vendor_name": empty},
+    )
+    assert (result.data["total"], result.data["vendor_name"]) == (55.0, "Acme")
+    assert not [i for i in result.issues if i.rule == "merge_conflict"]
+    assert "total" not in result.needs_review
+
+
+def test_an_empty_first_value_is_filled_without_a_conflict():
+    result = run_two_pieces({"vendor_name": ""}, {"vendor_name": "Acme", "total": 99.0})
+    assert (result.data["vendor_name"], result.data["total"]) == ("Acme", 99.0)
+    assert not [i for i in result.issues if i.rule == "merge_conflict"]
+
+
 def test_text_input_and_empty_document():
     assert (
         extract("Total: 12.00", Invoice, Config(), llm=FakeLLM({"total": 12.0}).client())

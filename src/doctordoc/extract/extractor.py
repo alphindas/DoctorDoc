@@ -143,11 +143,12 @@ def _run(
     first_call = len(client.calls)
     merged: dict[str, Any] = {}
     issues: list[Issue] = []
+    conflicts: dict[str, list[Any]] = {}  # field path -> later values that were not used
     for chunk in chunks:
         data, attempts, dropped = _ask_model(schema, chunk, config, client, deadline)
         result.attempts += attempts
         issues.extend(dropped)
-        _merge_into(merged, data)
+        _merge_into(merged, data, conflicts)
     instance = schema.model_validate(merged)
     data = instance.model_dump()
 
@@ -155,6 +156,11 @@ def _run(
     issues.extend(run_rules(all_rules, data))
     result.data = data
     result.fields = _score_fields(data, pages, issues, config.review_threshold)
+    # Added after scoring on purpose: a conflict asks for review but keeps the confidence.
+    issues.extend(_conflict_issues(merged, conflicts))
+    for item in result.fields:
+        if item.path in conflicts:
+            item.needs_review = True
     # If a sent prompt may have been cut, no field can be trusted: send all of them to review.
     cut = [p for call in client.calls[first_call:] if call["sent"] for p in call["problems"]]
     if cut:
@@ -339,16 +345,35 @@ def _remove_at(obj: Any, loc: tuple[Any, ...]) -> None:
         obj[:] = [item for item in obj if item is not None]
 
 
-def _merge_into(target: dict[str, Any], new: dict[str, Any]) -> None:
-    """Combine the answers for two chunks: fill gaps, extend lists, never overwrite."""
+def _merge_into(
+    target: dict[str, Any], new: dict[str, Any], conflicts: dict[str, list[Any]], path: str = ""
+) -> None:
+    """Combine the answers for two chunks: fill gaps, keep every list item, never overwrite.
+    A later, different value for a filled single field is noted in `conflicts`."""
     for key, value in new.items():
         old = target.get(key)
+        where = f"{path}.{key}" if path else key
         if old in (None, "", [], {}):
             target[key] = value
         elif isinstance(old, list) and isinstance(value, list):
-            old.extend(item for item in value if item not in old)
+            old.extend(value)
         elif isinstance(old, dict) and isinstance(value, dict):
-            _merge_into(old, value)
+            _merge_into(old, value, conflicts, where)
+        elif value not in (None, "", [], {}) and value != old:
+            conflicts.setdefault(where, []).append(value)
+
+
+def _conflict_issues(merged: dict[str, Any], conflicts: dict[str, list[Any]]) -> list[Issue]:
+    """One "error" issue per conflicting field, which puts it on the needs_review list."""
+    issues = []
+    for path, ignored in conflicts.items():
+        kept: Any = merged
+        for key in path.split("."):
+            kept = kept[key]
+        others = ", ".join(repr(v) for v in dict.fromkeys(ignored))
+        message = f"Pieces of the document disagree: kept {kept!r}, ignored {others}."
+        issues.append(Issue(path=path, rule="merge_conflict", severity="error", message=message))
+    return issues
 
 
 # ---------------------------------------------------------------------------- scoring
