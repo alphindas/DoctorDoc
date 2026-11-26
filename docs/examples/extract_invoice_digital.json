@@ -1,0 +1,171 @@
+{
+  "schema": "Invoice",
+  "model": "llama3.2:3b",
+  "fields": [
+    {
+      "field": "invoice_number",
+      "value": "RI-2025-1047",
+      "confidence": 1.0,
+      "grounded": true,
+      "page": 1,
+      "source_text": "RI-2025-1047"
+    },
+    {
+      "field": "invoice_date",
+      "value": "2025-11-16",
+      "confidence": 1.0,
+      "grounded": true,
+      "page": 1,
+      "source_text": "2025-11-16"
+    },
+    {
+      "field": "due_date",
+      "value": "2025-11-30",
+      "confidence": 1.0,
+      "grounded": true,
+      "page": 1,
+      "source_text": "2025-11-30"
+    },
+    {
+      "field": "vendor_name",
+      "value": "Riverview Industries",
+      "confidence": 1.0,
+      "grounded": true,
+      "page": 1,
+      "source_text": "Riverview Industries"
+    },
+    {
+      "field": "customer_name",
+      "value": "Acme Solutions Pvt. Ltd.",
+      "confidence": 1.0,
+      "grounded": true,
+      "page": 1,
+      "source_text": "Acme Solutions Pvt. Ltd."
+    },
+    {
+      "field": "currency",
+      "value": "USD",
+      "confidence": 0.25,
+      "grounded": false,
+      "page": null,
+      "source_text": null
+    },
+    {
+      "field": "line_items[0].description",
+      "value": "Consulting Services",
+      "confidence": 1.0,
+      "grounded": true,
+      "page": 1,
+      "source_text": "Consulting Services"
+    },
+    {
+      "field": "line_items[0].quantity",
+      "value": 10.0,
+      "confidence": 0.95,
+      "grounded": true,
+      "page": 1,
+      "source_text": "10"
+    },
+    {
+      "field": "line_items[0].unit_price",
+      "value": 2000.0,
+      "confidence": 0.95,
+      "grounded": true,
+      "page": 1,
+      "source_text": "2,000.00"
+    },
+    {
+      "field": "line_items[0].amount",
+      "value": 20000.0,
+      "confidence": 0.95,
+      "grounded": true,
+      "page": 1,
+      "source_text": "20,000.00"
+    },
+    {
+      "field": "line_items[1].description",
+      "value": "Software License",
+      "confidence": 1.0,
+      "grounded": true,
+      "page": 1,
+      "source_text": "Software License"
+    },
+    {
+      "field": "line_items[1].quantity",
+      "value": 1.0,
+      "confidence": 0.95,
+      "grounded": true,
+      "page": 1,
+      "source_text": "1"
+    },
+    {
+      "field": "line_items[1].unit_price",
+      "value": 15000.0,
+      "confidence": 0.95,
+      "grounded": true,
+      "page": 1,
+      "source_text": "15,000.00"
+    },
+    {
+      "field": "line_items[1].amount",
+      "value": 15000.0,
+      "confidence": 0.95,
+      "grounded": true,
+      "page": 1,
+      "source_text": "15,000.00"
+    },
+    {
+      "field": "line_items[2].description",
+      "value": "Support & Maintenance",
+      "confidence": 1.0,
+      "grounded": true,
+      "page": 1,
+      "source_text": "Support & Maintenance"
+    },
+    {
+      "field": "line_items[2].quantity",
+      "value": 1.0,
+      "confidence": 0.95,
+      "grounded": true,
+      "page": 1,
+      "source_text": "1"
+    },
+    {
+      "field": "line_items[2].unit_price",
+      "value": 5000.0,
+      "confidence": 0.95,
+      "grounded": true,
+      "page": 1,
+      "source_text": "5,000.00"
+    },
+    {
+      "field": "line_items[2].amount",
+      "value": 5000.0,
+      "confidence": 0.95,
+      "grounded": true,
+      "page": 1,
+      "source_text": "5,000.00"
+    },
+    {
+      "field": "subtotal",
+      "value": 40000.0,
+      "confidence": 0.95,
+      "grounded": true,
+      "page": 1,
+      "source_text": "40,000.00"
+    }
+  ],
+  "needs_review": [
+    "currency",
+    "total"
+  ],
+  "validation_issues": [
+    {
+      "field": "total",
+      "rule": "required",
+      "message": "'total' is required but empty",
+      "severity": "error"
+    }
+  ],
+  "error": null
+}

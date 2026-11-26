@@ -89,6 +89,10 @@ demo see [docs/deploy-demo.md](docs/deploy-demo.md). The look is from
 `doctordoc extract FILE --format json` prints this, the Extract tab downloads the same thing, and
 the future API will return it. One entry per field, then the review list and the problems:
 
+This is a shortened excerpt of **real output, not tuned**, from `examples/invoice_digital.pdf` with `llama3.2:3b`.
+It keeps 4 of the 19 entries in `fields`; everything else is as printed. See the
+[full saved output](docs/examples/extract_invoice_digital.json) and the [run details](docs/examples/README.md).
+
 ```json
 {
   "schema": "Invoice",
@@ -98,25 +102,35 @@ the future API will return it. One entry per field, then the review list and the
      "grounded": true, "page": 1, "source_text": "RI-2025-1047"},
     {"field": "currency", "value": "USD", "confidence": 0.25,
      "grounded": false, "page": null, "source_text": null},
-    {"field": "total", "value": 40000.0, "confidence": 0.95,
+    {"field": "line_items[0].amount", "value": 20000.0, "confidence": 0.95,
+     "grounded": true, "page": 1, "source_text": "20,000.00"},
+    {"field": "subtotal", "value": 40000.0, "confidence": 0.95,
      "grounded": true, "page": 1, "source_text": "40,000.00"}
   ],
-  "needs_review": ["currency"],
-  "validation_issues": [],
+  "needs_review": ["currency", "total"],
+  "validation_issues": [
+    {"field": "total", "rule": "required", "message": "'total' is required but empty",
+     "severity": "error"}
+  ],
   "error": null
 }
 ```
 
-This example (shortened to three fields) was seen during development on `examples/invoice_digital.pdf` with
-`llama3.2:3b`. No result file was saved, so read the values, including the confidence scores, as an illustration of the
-format, not as measured results.
-Note `currency`: the model said `USD`, but the invoice never states a currency, so it is not
-grounded, its confidence is low, and it is on the review list. A validation issue looks like
-`{"field": "total", "rule": "required", "message": "'total' is required but empty", "severity": "error"}`.
+The run was not fully right:
+
+- `total` is empty. An empty value gets no entry in `fields`, but `total` is on `needs_review` because the invoice
+  schema requires it, and `validation_issues` says so.
+- The invoice labels `40,000.00` as "Total" and shows no subtotal. The model put that amount in `subtotal`. It is
+  grounded, has confidence 0.95 and is **not** on the review list: grounding cannot tell that a value is in the wrong field.
+- `currency`: the model said `USD`, but it was not found in the document, so it is not grounded, its confidence is
+  low, and it is on the review list.
+
+This is one run on one synthetic invoice, so it shows the format, not how accurate extraction is.
 
 `field` is a path (`line_items[0].amount` for list items). `grounded: false` means the value is
 not in the document text (the model made it up): `page` and `source_text` are then `null`.
 `validation_issues[].severity` is `error` or `warning`. `error` is `null` unless extraction failed.
+`needs_review` can also contain `document`, which is not a field: it is there when the [length guard](#known-limitations) raised an issue.
 
 ## How the router decides
 
