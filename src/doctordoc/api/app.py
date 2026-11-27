@@ -23,6 +23,7 @@ from starlette.concurrency import run_in_threadpool
 from doctordoc import __version__
 from doctordoc.api.guards import LOCAL_HOSTS, SameSiteOnly, WaitingLine
 from doctordoc.api.uploads import BodyLimit, saved_upload
+from doctordoc.cloud_warning import warn_about_cloud
 from doctordoc.config import Config, LLMConfig
 from doctordoc.extract import BUILTIN_SCHEMAS, LLMError, extract, list_models
 from doctordoc.models import Document
@@ -43,6 +44,7 @@ def create_app(config: Config | None = None, *, local_only: bool = True) -> Fast
     """
     config = (config or Config()).model_copy(deep=True)
     config.cache_dir = None  # the parse cache would keep documents on disk: the API stores nothing
+    warn_about_cloud(config)
     docs = config.api.docs
     app = FastAPI(
         title="DoctorDoc",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from copy import deepcopy
+from copy import copy
 from pathlib import Path
 from typing import Any, Literal
 
@@ -161,13 +161,18 @@ class Config(BaseSettings):
     max_file_mb: float = 200.0
     cache_dir: Path | None = None  # set it to keep parsed results on disk, keyed by file hash
 
-    @field_validator("page_chains", "timeouts")
+    @field_validator("page_chains", "file_chains", "timeouts")
     @classmethod
     def _over_the_defaults(cls, given: dict, info: ValidationInfo) -> dict:
         """A file or variable changes only the entries it names; the others keep their default.
-        An empty list is an entry like any other: no engines for that kind of page."""
-        defaults = DEFAULT_PAGE_CHAINS if info.field_name == "page_chains" else DEFAULT_TIMEOUTS
-        return {**deepcopy(defaults), **given}
+        An empty list is an entry like any other: no engines for that kind of page or file."""
+        defaults = {
+            "page_chains": DEFAULT_PAGE_CHAINS,
+            "file_chains": DEFAULT_FILE_CHAINS,
+            "timeouts": DEFAULT_TIMEOUTS,
+        }[info.field_name]
+        # every list is copied on its own: in the defaults, several file types share one list
+        return {**{name: copy(value) for name, value in defaults.items()}, **given}
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> Config:

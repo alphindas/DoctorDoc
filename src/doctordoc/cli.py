@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import unicodedata
+from collections import Counter
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -12,6 +14,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table as RichTable
+from rich.text import Text
 
 from doctordoc.config import Config
 from doctordoc.models import Document
@@ -25,6 +28,16 @@ ConfigOption = Annotated[
 ]  # noqa: UP007
 
 
+@app.callback()
+def _every_command() -> None:
+    # Text printed to stdout (the tables) shows "?" for a character the terminal's encoding
+    # lacks, instead of stopping with UnicodeEncodeError. JSON and Markdown do not go this
+    # way: they are always written as UTF-8.
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure:
+        reconfigure(errors="replace")
+
+
 def _load_config(path: Path | None, gpu: bool | None = None) -> Config:
     config = Config.from_yaml(path) if path else Config()
     if gpu is not None:
@@ -32,20 +45,62 @@ def _load_config(path: Path | None, gpu: bool | None = None) -> Config:
     return config
 
 
+def _write_utf8(text: str, errors: str) -> None:
+    """Write to stdout as UTF-8 whatever the locale, with the system's line endings. Not through
+    Rich (it wraps lines and turns ":smile:" into an emoji) and not through click.echo (it
+    removes terminal codes from piped text)."""
+    sys.stdout.flush()  # keep the order if anything was printed as text before
+    sys.stdout.buffer.write(text.replace("\n", os.linesep).encode("utf-8", errors))
+    sys.stdout.buffer.flush()
+
+
 def _print_json(text: str) -> None:
-    """JSON goes straight to stdout, never through Rich: Rich wraps long lines (a line break
-    inside a text value is not valid JSON), adds colour, and turns ":smile:" into an emoji."""
-    typer.echo(text)
+    # A model's answer can hold half of a character pair, which UTF-8 cannot carry.
+    # "backslashreplace" writes it as \udXXX, which is how JSON itself escapes it.
+    _write_utf8(text + "\n", "backslashreplace")
 
 
 def _print_markdown(text: str) -> None:
-    """Markdown goes to stdout as the same bytes that --out writes: UTF-8 whatever the locale,
-    with the system's line endings. Not through Rich (it wraps lines and turns ":smile:" into
-    an emoji) and not through click.echo (it removes terminal codes from piped text)."""
-    sys.stdout.flush()  # keep the order if anything was printed as text before
+    """The same bytes that --out writes."""
     # surrogateescape gives a file name that is not valid UTF-8 its own bytes back
-    sys.stdout.buffer.write(text.replace("\n", os.linesep).encode("utf-8", "surrogateescape"))
-    sys.stdout.buffer.flush()
+    _write_utf8(text, "surrogateescape")
+
+
+def _output_names(files: list[Path], target: Path, extension: str) -> list[str]:
+    """One output file name for each input: "<input name>.<extension>", changed only where two
+    inputs would write to the same file. Then the folders are put in front, and if that name is
+    taken too, a number is added."""
+
+    def key(name: str) -> str:  # Windows and macOS see "A.txt" and "a.txt" as one file
+        return unicodedata.normalize("NFC", name).casefold()
+
+    def too_long(name: str) -> bool:  # the usual limit for a file name
+        return len(name.encode("utf-8", "surrogateescape")) > 255
+
+    names = [f"{path.name}.{extension}" for path in files]
+    counts = Counter(map(key, names))
+    clashing = [i for i, name in enumerate(names) if counts[key(name)] > 1]
+    taken = {key(name) for name in names if counts[key(name)] == 1}
+    # files at the top of the folder choose first, so that they can keep their own name
+    clashing.sort(key=lambda i: (len(files[i].relative_to(target).parts) > 1, i))
+    for i in clashing:
+        folders = files[i].relative_to(target).parts[:-1]
+        stem, suffix = os.path.splitext(files[i].name)
+        base = "_".join([*folders, stem])
+        if too_long(f"{base}{suffix}.{extension}"):  # then leave the folders out
+            base = stem
+        number = 1
+        while True:  # ends because every number gives a new name
+            tail = f"{'' if number == 1 else f'-{number}'}{suffix}.{extension}"
+            fitted = base
+            while fitted and too_long(fitted + tail):
+                fitted = fitted[:-1]
+            if key(fitted + tail) not in taken:
+                break
+            number += 1
+        names[i] = fitted + tail
+        taken.add(key(names[i]))
+    return names
 
 
 def _files_in(target: Path) -> list[Path]:
@@ -71,7 +126,9 @@ def parse(
     """Parse a file (or every file in a folder) into Markdown or JSON.
 
     With --format json and no --out, a folder with several files (or none) gives a JSON list.
+    With --out, inputs that would write to the same file get different names.
     """
+    from doctordoc.cloud_warning import warn_about_cloud
     from doctordoc.pipeline import parse_many
 
     if format not in ("md", "json"):
@@ -79,20 +136,34 @@ def parse(
     if verbose:
         logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
     files = _files_in(target)
-    docs = parse_many(files, _load_config(config_path, gpu))
+    config = _load_config(config_path, gpu)
+    warn_about_cloud(config)
+    docs = parse_many(files, config)
+    output_names = _output_names(files, target, format) if out_dir else []
+    renamed = sum(
+        name != f"{path.name}.{format}" for path, name in zip(files, output_names, strict=False)
+    )
+    if renamed:
+        err.print(
+            f"Some inputs share a file name. Outputs renamed so that no result is lost: {renamed}",
+            highlight=False,
+            soft_wrap=True,
+        )
 
     # several JSON documents one after another are not valid JSON, so they go in one list
     as_list = format == "json" and not out_dir and len(files) != 1
     listed: list[str] = []
     failures = 0
-    for path, doc in zip(files, docs, strict=True):
+    for index, (path, doc) in enumerate(zip(files, docs, strict=True)):
         failures += 1 if doc.error else 0
         text = doc.to_markdown() if format == "md" else doc.to_json()
         if out_dir:
             out_dir.mkdir(parents=True, exist_ok=True)
-            destination = out_dir / f"{path.name}.{format}"
+            destination = out_dir / output_names[index]
             destination.write_text(text, encoding="utf-8")
-            err.print(f"[green]wrote[/green] {destination}", soft_wrap=True)
+            # Text, not markup: a path may hold "[red]" or ":smile:"
+            line = Text.assemble(("wrote", "green"), f" {path} -> {destination}")
+            err.print(line, soft_wrap=True)
         elif format == "json":
             if as_list:
                 err.print(f"===== {path} =====", markup=False, highlight=False, soft_wrap=True)
@@ -215,6 +286,7 @@ def extract(
     config_path: ConfigOption = None,
 ) -> None:
     """Extract fields (with proof of where each came from) using a local LLM."""
+    from doctordoc.cloud_warning import warn_about_cloud
     from doctordoc.extract import extract as run_extract
 
     config = _load_config(config_path)
@@ -224,6 +296,7 @@ def extract(
         config.llm.base_url = base_url
     if provider:
         config.llm.provider = provider  # type: ignore[assignment]
+    warn_about_cloud(config)
     result = run_extract(file, schema, config)
     if format == "json":
         _print_json(result.to_report_json())
@@ -285,9 +358,11 @@ def ui(
             soft_wrap=True,
         )
         raise typer.Exit(code=1)
+    from doctordoc.cloud_warning import UI_NOTE, warn_about_cloud
     from doctordoc.ui import app as ui_app
 
     config = _load_config(config_path)
+    warn_about_cloud(config, UI_NOTE)
     env = dict(os.environ)
     if config_path:
         env["DOCTORDOC_UI_CONFIG"] = str(config_path.resolve())
