@@ -1,9 +1,13 @@
 # DoctorDoc
 
+[![CI](https://github.com/alphindas/DoctorDoc/actions/workflows/ci.yml/badge.svg)](https://github.com/alphindas/DoctorDoc/actions/workflows/ci.yml)
+
 **One door for any document: it works out what the file is, picks the best engine for each page, and returns clean Markdown/JSON plus fields you can trace back to the source text.**
 
 > Status: early (v0.1). Parsing + router, field extraction, a web UI and a synthetic benchmark work.
 > The API and the Docker image are not built yet. Apache-2.0, fully local by default.
+> A [GitHub Actions workflow](.github/workflows/ci.yml) is set up to run ruff and the tests. It does not install Docling
+> or MarkItDown (the tests that need them are skipped), and it runs no benchmarks and no Ollama model.
 
 > **Key results and weak spots**
 > - Router text **0.99**, best single engine 0.51 (34 readable files, before the rotation fix): mostly breadth. Per type it mostly ties; it loses on mixed pages ([comparison](#router-against-single-engines)).
@@ -395,7 +399,7 @@ Ideas that are **not built**:
   only 4 of 6 bad outputs from junk hidden text layers ([numbers](#how-often-the-quality-score-is-fooled)). For
   example, comparing two engines on the same page. None has been tried or measured.
 - **Test field extraction on more invoice layouts.** Not built, not measured.
-- An API, a Docker image and a published CI setup.
+- An API and a Docker image.
 
 ## Screenshots
 
