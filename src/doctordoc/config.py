@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Which engines to try, in order, for each kind of PDF page.
@@ -88,6 +88,36 @@ class IntakeLimits(BaseModel):
     max_member_mb: float = 100.0
 
 
+class ApiConfig(BaseModel):
+    """The HTTP API (`doctordoc api`). None of this is a login."""
+
+    model_config = ConfigDict(validate_assignment=True)  # also check values set from code
+
+    # /parse and /extract requests that may wait while one works. The next one gets a 503.
+    max_waiting: int = Field(4, ge=0)
+    docs: bool = True  # serve /docs, /redoc and /openapi.json
+    # Extra Host names to accept besides localhost, 127.0.0.1 and ::1. Names only, no port.
+    allowed_hosts: list[str] = Field(default_factory=list)
+
+    @field_validator("allowed_hosts")
+    @classmethod
+    def _names_only(cls, hosts: list[str]) -> list[str]:
+        """Refuse entries that could never match, so a mistake is not silent."""
+        cleaned = []
+        for entry in hosts:
+            name = entry.strip().lower()
+            if name.startswith("[") and name.endswith("]"):
+                name = name[1:-1]
+            # exactly one ":" means "name:port" (an IPv6 address has at least two)
+            if not name or name.count(":") == 1 or any(c in name for c in "/*[]@ "):
+                raise ValueError(
+                    f"{entry!r} is not a host name: write names or addresses only, "
+                    "with no port, no http:// and no wildcard."
+                )
+            cleaned.append(name)
+        return cleaned
+
+
 class Config(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DOCTORDOC_", env_nested_delimiter="__")
 
@@ -121,6 +151,9 @@ class Config(BaseSettings):
     # --- field extraction (phase 2) ---
     llm: LLMConfig = Field(default_factory=LLMConfig)
     review_threshold: float = 0.7  # fields with confidence below this go to needs_review
+
+    # --- HTTP API ---
+    api: ApiConfig = Field(default_factory=ApiConfig)
 
     # --- files ---
     intake: IntakeLimits = Field(default_factory=IntakeLimits)
