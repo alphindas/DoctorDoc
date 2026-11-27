@@ -106,7 +106,7 @@ def parse_uploads(
                 if too_big:
                     documents.append(Document(source=name, error=f"File is too big: {too_big}"))
                     continue
-                path = Path(folder) / f"{index}-{_safe_file_name(name)}"
+                path = Path(folder) / f"{index}-{safe_file_name(name)}"
                 path.write_bytes(data)
                 documents.append(parse(path, config, filename=name, router=router))
                 path.unlink(missing_ok=True)
@@ -126,7 +126,8 @@ def member_files(data: bytes, file_type: str, config: Config) -> dict[str, bytes
     return members
 
 
-def _safe_file_name(name: str) -> str:
+def safe_file_name(name: str) -> str:
+    """A name that is safe to use for a file on disk (put something in front of it)."""
     return re.sub(r"[^A-Za-z0-9._-]+", "_", Path(name).name)[:80] or "file"
 
 

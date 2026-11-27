@@ -43,5 +43,5 @@ jobs:
       # Its tests, and the "markitdown" one, skip themselves when the package is missing.
       # No Ollama and no benchmarks: the tests use a scripted model.
       - run: uv venv --python 3.12
-      - run: uv pip install -e ".[dev,ui,ocr]"
+      - run: uv pip install -e ".[dev,ui,ocr,api]"
       - run: .venv/bin/python -m pytest -q -rs

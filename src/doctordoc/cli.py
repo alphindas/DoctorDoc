@@ -1,4 +1,4 @@
-"""Command line: doctordoc parse | engines | triage."""
+"""Command line: doctordoc parse | engines | triage | extract | ui | api."""
 
 from __future__ import annotations
 
@@ -273,6 +273,49 @@ def ui(
     ]
     cwd = root if (root / ".streamlit" / "config.toml").exists() else None
     raise typer.Exit(code=subprocess.call(command, env=env, cwd=cwd))
+
+
+@app.command()
+def api(
+    host: Annotated[str, typer.Option(help="Address to listen on.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Port to listen on.")] = 8000,
+    config_path: ConfigOption = None,
+) -> None:
+    """Start the HTTP API. It has no login: keep it on this computer."""
+    import importlib.util
+
+    needed = ("fastapi", "uvicorn", "python_multipart")
+    if any(importlib.util.find_spec(name) is None for name in needed):
+        err.print(
+            "[red]The API needs extra packages.[/red] Install them with: "
+            + escape('pip install "doctordoc[api]"'),
+            soft_wrap=True,
+        )
+        raise typer.Exit(code=1)
+    import uvicorn
+
+    from doctordoc.api import create_app
+
+    if not _is_local(host):
+        err.print(
+            f"[bold red]warning[/bold red] {escape(repr(host))} is not a local address, and the "
+            "API has no login: anyone who can reach it can send files to be parsed and use your "
+            "model. Use 127.0.0.1 unless something else controls who can connect.",
+            soft_wrap=True,
+        )
+    uvicorn.run(create_app(_load_config(config_path)), host=host, port=port)
+
+
+def _is_local(host: str) -> bool:
+    """True only for addresses that cannot be reached from another computer."""
+    import ipaddress
+
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:  # another name: assume other computers can reach it
+        return False
 
 
 if __name__ == "__main__":

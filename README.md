@@ -4,8 +4,8 @@
 
 **One door for any document: it works out what the file is, picks the best engine for each page, and returns clean Markdown/JSON plus fields you can trace back to the source text.**
 
-> Status: early (v0.1). Parsing + router, field extraction, a web UI and a synthetic benchmark work.
-> The API and the Docker image are not built yet. Apache-2.0, fully local by default.
+> Status: early (v0.1). Parsing + router, field extraction, a web UI, a local [HTTP API](#http-api) (no login) and a
+> synthetic benchmark work. The Docker image is not built yet. Apache-2.0, fully local by default.
 > A [GitHub Actions workflow](.github/workflows/ci.yml) is set up to run ruff and the tests. It does not install Docling
 > or MarkItDown (the tests that need them are skipped), and it runs no benchmarks and no Ollama model.
 
@@ -21,7 +21,7 @@
 ```bash
 git clone https://github.com/alphindas/DoctorDoc.git && cd DoctorDoc
 uv venv && source .venv/bin/activate
-uv pip install -e ".[ocr,docling,markitdown]"   # extras are optional: see `doctordoc engines`
+uv pip install -e ".[ocr,docling,markitdown]"   # keep ocr: without extras nothing parses (see Known limitations)
 
 doctordoc parse report.pdf --explain            # Markdown + the router's decision log
 doctordoc triage report.pdf                     # what kind is each page?
@@ -88,10 +88,165 @@ local Ollama model, the mixed-page merge switch and an on/off list of engines. T
 demo see [docs/deploy-demo.md](docs/deploy-demo.md). The look is from
 [docs/design/mockup.png](docs/design/mockup.png), a design mockup (made-up data, not a screenshot).
 
+## HTTP API
+
+The API uses the same parse and extract code as the command line. It has **no login**, so it is meant for programs
+on your own computer, and it works on **one heavy request at a time**. It is early: it was tested **only locally**,
+with FastAPI's `TestClient` and one smoke test with `curl` against a real server. It is **not load-tested**.
+
+```bash
+uv pip install -e ".[api]"       # add the ocr, docling and markitdown extras for more engines
+doctordoc api                    # http://127.0.0.1:8000  (--host, --port, --config my.yaml)
+```
+
+| Endpoint | What it does |
+|---|---|
+| `GET /health` | status, version, and `ollama_reachable` (`null` if the server is set to an OpenAI-compatible model server) |
+| `GET /engines` | every engine with its license and whether it is installed: the data of `doctordoc engines` |
+| `POST /parse` | form field `file`. Query: `format=json` (default) or `markdown`; `explain=true` or `false` |
+| `POST /extract` | form fields `file` and `schema`: `invoice`, `receipt`, `drilling` or `form`. Returns the [extraction report](#extraction-output-format) |
+
+With `format=json`, `/parse` returns the Document as JSON, which always includes each file's router decision log
+(`decisions`). With `format=markdown` it returns Markdown text; add `explain=true` to get JSON with two keys,
+`markdown` and `decisions`.
+
+FastAPI's own `/docs` and `/redoc` pages are on too. Your browser loads their scripts (and, for `/redoc`, fonts)
+from public servers, so they are not fully local. The four endpoints do not need those pages.
+
+### Examples (real output)
+
+The outputs below are real, from the smoke test on one machine (they are not saved in the repo). That test ran
+**without Docling**, with `llama3.2:3b` on Ollama 0.33.1. Run the commands from the repo folder.
+
+```bash
+curl -s http://127.0.0.1:8000/health
+```
+
+```json
+{"status":"ok","version":"0.1.0","ollama_reachable":true}
+```
+
+```bash
+curl -s -F file=@examples/invoice_digital.pdf "http://127.0.0.1:8000/parse?format=markdown"
+```
+
+The first lines of the reply:
+
+```markdown
+<!-- page 1 -->
+
+# Riverview Industries
+
+Build. Innovate. Grow.
+
+# INVOICE
+
+Invoice No.: RI-2025-1047 Date: 2025-11-16 Due Date: 2025-11-30
+```
+
+With `&explain=true` on the same request, `decisions` had three entries. These are the last two:
+
+```json
+[
+  {"source": "invoice_digital.pdf", "scope": "page 1", "engine": "docling", "outcome": "skipped",
+   "reason": "not available: python package 'docling' is not installed (pip install \"doctordoc[docling]\")",
+   "quality": null, "seconds": 0.0},
+  {"source": "invoice_digital.pdf", "scope": "page 1", "engine": "pdf_text", "outcome": "accepted",
+   "reason": "passed the quality check", "quality": 1.0, "seconds": 0.005}
+]
+```
+
+```bash
+curl -s -F file=@examples/invoice_digital.pdf -F schema=invoice http://127.0.0.1:8000/extract
+```
+
+A shortened excerpt: it keeps 4 of the 20 entries in `fields`; everything else is as returned. The call took 21 s.
+
+```json
+{
+  "schema": "Invoice",
+  "model": "llama3.2:3b",
+  "fields": [
+    {"field": "invoice_number", "value": "RI-2025-1047", "confidence": 1.0,
+     "grounded": true, "page": 1, "source_text": "RI-2025-1047"},
+    {"field": "currency", "value": "USD", "confidence": 0.25,
+     "grounded": false, "page": null, "source_text": null},
+    {"field": "subtotal", "value": 40000.0, "confidence": 0.95,
+     "grounded": true, "page": 1, "source_text": "40,000.00"},
+    {"field": "total", "value": 40000.0, "confidence": 0.95,
+     "grounded": true, "page": 1, "source_text": "40,000.00"}
+  ],
+  "needs_review": ["currency"],
+  "validation_issues": [],
+  "error": null
+}
+```
+
+The invoice shows no subtotal, yet `subtotal` is filled and **not** flagged. This differs from the
+[saved command-line run](#extraction-output-format) on the same file, where Docling was installed: there `total` was
+empty. **The engine that reads the file can change the extracted fields.** In the smoke test, `doctordoc extract
+--format json` in the same setup gave the same report as `/extract`.
+
+From a second server in the same test, started with a 1 MB limit (`DOCTORDOC_MAX_FILE_MB=1`) and a model server
+address with nothing on it. A 50 MB upload got HTTP 413, and an `/extract` request got HTTP 503:
+
+```json
+{"detail":"The upload is over the 1 MB limit (max_file_mb)."}
+{"detail":"Cannot reach Ollama, so /extract cannot run. Start it, or check llm.base_url in the server's settings. /parse works without it."}
+```
+
+### Status codes
+
+| Code | When |
+|---|---|
+| 200 | done. A file with warnings, or a ZIP with a bad file inside, is still 200: read `warnings` and each child's `error` |
+| 400 | the request body is not valid form data |
+| 413 | the upload is over `max_file_mb` |
+| 415 | the file is unsupported or broken: empty, password-protected, corrupt, unknown type, or no engine could read it (also when none that could is installed, or all failed or timed out) |
+| 422 | unknown schema, or a missing or wrong parameter. Also `/extract` on a readable file with no text: then the body is the extraction report, with `error` set |
+| 502 | `/extract`: the model step failed (for example model not pulled, time limit, answer cut off, prompt too long). The body is the extraction report, with `error` set |
+| 503 | `/extract`: the model server cannot be reached. `/parse` still works |
+| 500 | unexpected error. The reply has no details; the server log does |
+
+Other errors have a body with one key, `detail`.
+
+### Safety and limits
+
+- **No login, no HTTPS.** By default it listens on `127.0.0.1` only. `--host` with any other address prints a warning:
+  anyone who can reach it can use it.
+- **No CORS headers**, so a web page from another site cannot read the replies in a normal browser. The server does
+  **not** stop such a page from *sending* a file to `127.0.0.1:8000` and making your computer work on it, and it does
+  not check the `Host` or `Origin` header. Some browsers may block such requests themselves (not tested).
+- **No storage.** Each upload is written to its own temporary folder, which is deleted when the request ends, also
+  after an error. The parse cache (`cache_dir`) is switched off even if your settings turn it on. If the process is
+  force-killed or the machine loses power, temporary files can be left behind.
+- **Upload size** is capped by `max_file_mb` (default 200). The count is made while the upload arrives, and the whole
+  request may be 64 KB larger to make room for the form around the file; the file itself is then checked exactly.
+  The cap is on the upload, not on what it expands to: ZIP and email contents have their own limits, but a DOCX, XLSX
+  or PPTX is compressed and can need far more memory than its size.
+- **One heavy request at a time.** `/parse` and `/extract` share one lock, which also covers the model call, because
+  only one heavy model should be in memory. If requests arrive together, one works and the **others wait**; they are
+  not refused. There is no limit on how many wait or for how long, and each waiting upload takes disk space.
+  `/health` and `/engines` do not wait. Run one server process: each process has its own lock.
+  - The lock does not control Ollama, which can keep its model in memory after replying, or other programs using
+    your GPU. An engine that hit its time limit can also keep running after its request ends.
+  - Engine models are loaded again for each request and freed afterwards.
+- **No page limit and no time limit for a whole request.** A very long file holds up everyone else. The per-page engine
+  limits and the model time limit still apply. Closing the connection is not meant to stop work already running (not tested).
+- **A request cannot change the server's settings**: not the model, the model server address or the engines. Cloud
+  fallback is off unless the server's settings turn it on.
+- **Built-in schemas only.** The command line also takes your own `module:Class`; the API refuses it, because it would
+  let any caller make the server import Python code.
+- **`/extract` reads only the file's own pages**, like the command line: it ignores files inside a ZIP, and email
+  attachments, without saying so. A plain ZIP gets 422.
+- **`/extract` does not return warnings** (for example "wrong file extension" or "long document"); the command line
+  prints them separately. The length guard is still visible: `document` in `needs_review`.
+
 ## Extraction output format
 
 `doctordoc extract FILE --format json` prints this, the Extract tab downloads the same thing, and
-the future API will return it. One entry per field, then the review list and the problems:
+[`POST /extract`](#http-api) returns it (on the command line, [long lines can break the JSON](#known-limitations)).
+One entry per field, then the review list and the problems:
 
 This is a shortened excerpt of **real output, not tuned**, from `examples/invoice_digital.pdf` with `llama3.2:3b`.
 It keeps 4 of the 19 entries in `fields`; everything else is as printed. See the
@@ -399,7 +554,7 @@ Ideas that are **not built**:
   only 4 of 6 bad outputs from junk hidden text layers ([numbers](#how-often-the-quality-score-is-fooled)). For
   example, comparing two engines on the same page. None has been tried or measured.
 - **Test field extraction on more invoice layouts.** Not built, not measured.
-- An API and a Docker image.
+- A Docker image.
 
 ## Screenshots
 
@@ -429,6 +584,14 @@ Honest list, from testing on synthetic documents so far:
   - **After the reply:** Ollama's `prompt_eval_count` and `eval_count` are logged and kept in `result.llm_calls` (not in the JSON report). If the prompt count reaches the safe limit, looks like a cut (about half of `num_ctx`), or prompt plus answer is more than `num_ctx`, there is a warning, every field is marked for review, and `needs_review` also lists `document` (a `prompt_length` entry in `validation_issues` says why).
   - **Not covered:** the estimate is not the model's tokenizer. It can refuse text that would fit (for example long Chinese, Japanese or Hindi text) and can guess too low (for example Malayalam or tables full of numbers). The check after the reply is the backstop; its cut pattern was seen with this one Ollama version and model, and it needs the server to report the counts. OpenAI-compatible servers are not guarded.
 - **Merging the pieces of a long document has limits.** Each piece is a separate model call, and a split document gets a warning. Every list item from every piece is kept, including repeated ones: two identical rig day-rate lines stay two. The risk is the other way: if the model lists a repeated header or total row as an item more than once, it can be counted twice. The invoice and receipt rules flag this only if a subtotal was extracted and the lines do not add up to it; the drilling and form schemas have no rule that checks for an extra item. For a single field, the first non-empty value is still kept. If a later piece gives a different non-empty value, the field goes to `needs_review` and `validation_issues` gets a `merge_conflict` error that shows both values. Its confidence is not lowered for this, and an empty later value does not count. The comparison is exact, so a small difference in spelling or capitals is flagged too. Different values for the same entry in two lists are not compared: both entries are kept. (Checked with a scripted model during development, no result file saved.)
+- **The command line can print broken JSON.** `doctordoc parse -f json` and `doctordoc extract --format json` wrap long
+  lines to the output width, which can put a line break inside a text value. Seen with `parse` on
+  `examples/invoice_digital.pdf`, and with `extract` (scripted model) when the length guard's long message was in the
+  report (during development, no result file saved). Setting `COLUMNS=1000000` avoided it in both cases, and so did
+  `parse --out FOLDER`. The HTTP API does not wrap its JSON.
+- **An install with no extras cannot parse.** The code imports NumPy, which is not a core dependency, so parsing stops
+  with `ModuleNotFoundError` (seen during development, no result file saved). The `api`, `ocr` and `ui` extras bring
+  NumPy in.
 - OCR engines sometimes glue words together across wide gaps (seen during development, no result file saved). Grounding tolerates this, but the Markdown shows it.
 - Field extraction uses a small local model (`llama3.2:3b` by default) and has only been measured on small synthetic sets (invoices and drilling reports).
 - `.msg` (Outlook) attachment reading is not tested: this repo has no `.msg` sample file and no test for it.

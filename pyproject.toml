@@ -29,7 +29,14 @@ ocr = ["rapidocr>=3.0", "onnxruntime>=1.17"]    # Apache-2.0
 paddle = ["paddleocr>=3.0", "paddlepaddle>=3.0"]  # Apache-2.0
 markitdown = ["markitdown[docx,pptx,xlsx]>=0.1"]  # MIT
 msg = ["olefile>=0.46"]  # BSD-2: read attachments of Outlook .msg files
-api = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
+api = [  # all MIT / Apache / BSD
+    # python-multipart and starlette: versions with no advisory in OSV when this was written
+    "fastapi>=0.133",
+    "starlette>=1.3.1",
+    "uvicorn>=0.29",
+    "python-multipart>=0.0.31",
+    "numpy>=1.26",  # building the engine list imports it, so nothing parses without it
+]
 ui = ["streamlit>=1.67"]  # tabs that remember the open tab (key + on_change)
 # Optional plugins with restrictive licenses -- read the README license table first.
 marker = ["marker-pdf"]   # model weights: revenue/funding limits for commercial use
