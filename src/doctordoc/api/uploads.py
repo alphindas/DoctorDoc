@@ -1,4 +1,5 @@
-"""Uploads: stop one that is too large while it is still arriving, and keep none on disk."""
+"""Uploads: stop one that is too large while it is still arriving, and delete each temporary
+copy when its request ends."""
 
 from __future__ import annotations
 

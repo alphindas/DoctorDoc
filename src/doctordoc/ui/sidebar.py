@@ -54,7 +54,7 @@ def _upload_box(base: Config):
         accept_multiple_files=True,
         key="uploads",
         label_visibility="collapsed",
-        help="Any file type. Files are read from a temporary folder and deleted afterwards.",
+        help=f"Any file type. {service.storage_note(base)}",
     )
     st.caption(
         f"Drop any file here: PDF, Word, Excel, scans, emails, ZIP. Up to {base.max_file_mb:g} MB each."
@@ -88,21 +88,14 @@ def _ocr_selector(report: list[dict[str, str]], local_only: bool) -> str | None:
 
 def _local_only_toggle(base: Config) -> bool:
     local_only = st.toggle(
-        "Local only (private)",
-        value=True,
-        key="local_only",
-        help="On: every page stays on this machine. Off: the cloud fallback may be used.",
+        "Local only (private)", value=True, key="local_only", help=service.CLOUD_PRIVACY_NOTE
     )
     if not local_only:
-        st.warning(
-            "Cloud fallback is ON. Pages that local engines cannot read may be sent as images "
-            f"to {base.cloud.base_url}. Do not use this for private documents.",
-            icon=":material/cloud_upload:",
-        )
-        if not base.cloud.api_key:
-            st.caption(
-                "No cloud API key is set in the config, so the cloud engine will be skipped."
-            )
+        st.warning(service.CLOUD_PRIVACY_NOTE, icon=":material/cloud_upload:")
+        st.caption(f"Cloud server: {base.cloud.base_url}")
+    llm_note = service.llm_privacy_note(base)
+    if llm_note:  # shown with the switch on or off
+        st.warning(llm_note, icon=":material/dns:")
     return local_only
 
 
@@ -112,14 +105,17 @@ def _model_selector(base: Config) -> str | None:
     if names:
         default = names.index(llm.model) if llm.model in names else 0
         return st.selectbox(
-            "Model (local, for Extract)",
+            "Model (for Extract)",
             names,
             index=default,
             key="model",
-            help=f"Models found on your local server at {llm.base_url}.",
+            help=f"Models found on the model server at {llm.base_url}.",
         )
-    st.selectbox("Model (local, for Extract)", [llm.model], key="model", disabled=True)
-    st.caption(f"No local model server found at {llm.base_url}. Start Ollama to use Extract.")
+    st.selectbox("Model (for Extract)", [llm.model], key="model", disabled=True)
+    st.caption(
+        f"No model server found at {llm.base_url}. Start your model server (Ollama by default) "
+        "to use Extract."
+    )
     return llm.model
 
 

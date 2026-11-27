@@ -13,6 +13,7 @@ import sys
 import pytest
 from typer.testing import CliRunner
 
+import samples
 from doctordoc import cli, parse
 from doctordoc.config import Config
 from doctordoc.router import Router
@@ -263,3 +264,197 @@ def test_line_endings_follow_the_system_as_the_out_file_does(monkeypatch, capsys
     monkeypatch.setattr(cli.os, "linesep", separator)  # "\r\n" is what Windows uses
     cli._print_markdown("one\ntwo\n")
     assert capsysbinary.readouterr().out == f"one{separator}two{separator}".encode()
+
+
+# ---------------------------------------------------------------------------- --out names
+
+
+def write_files(folder, contents):
+    for name, text in contents.items():
+        path = folder / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+
+def parse_into(tmp_path, settings, contents, *extra):
+    """Parse a folder with --out: (output name -> text, what was printed on stderr)."""
+    source, out = tmp_path / "in", tmp_path / "out"
+    write_files(source, contents)
+    run = run_bytes(["parse", source, "-o", out, "-c", settings, *extra])
+    assert run.returncode == 0, run.stderr
+    written = {p.name: p.read_text(encoding="utf-8") for p in out.iterdir()}
+    return written, run.stderr.decode()
+
+
+def test_two_files_with_the_same_name_both_keep_their_result(tmp_path, settings):
+    contents = {"a/report.txt": "first words here", "b/report.txt": "second words here"}
+    written, log = parse_into(tmp_path, settings, {**contents, "plain.txt": "third words here"})
+    assert {name: text.strip() for name, text in written.items()} == {
+        "a_report.txt.md": "first words here",
+        "b_report.txt.md": "second words here",
+        "plain.txt.md": "third words here",  # no clash: the name stays as before
+    }
+    for source, output in [
+        ("a/report.txt", "a_report.txt.md"),
+        ("b/report.txt", "b_report.txt.md"),
+        ("plain.txt", "plain.txt.md"),
+    ]:  # the mapping: each input and the file it went to
+        line = f"{tmp_path / 'in' / source} -> {tmp_path / 'out' / output}"
+        assert line in log, log
+    assert "Outputs renamed so that no result is lost: 2" in log
+
+
+def test_a_file_at_the_top_keeps_its_name_and_a_taken_name_gets_a_number(tmp_path, settings):
+    contents = {
+        "report.txt": "top words here",
+        "a/report.txt": "inner words here",
+        "a_report.txt": "already called that",  # the name the inner one would have taken
+    }
+    written, _ = parse_into(tmp_path, settings, contents)
+    assert {name: text.strip() for name, text in written.items()} == {
+        "report.txt.md": "top words here",
+        "a_report.txt.md": "already called that",
+        "a_report-2.txt.md": "inner words here",
+    }
+
+
+@pytest.mark.parametrize("extension", ["md", "json"])
+def test_no_result_is_lost_in_awkward_cases(tmp_path, settings, extension):
+    deep = "/".join("d" * 60 for _ in range(6))  # too long to put into one file name
+    contents = {
+        "p/q/report.txt": "words number one",
+        "p_q/report.txt": "words number two",  # same folder-based name as the one above
+        "x/Report.txt": "words number three",  # one file on Windows and macOS
+        f"{deep}/report.txt": "words number four",
+        f"{deep}/more/report.txt": "words number five",
+        "[red] :smile:/report.txt": "words number six",
+    }
+    written, log = parse_into(tmp_path, settings, contents, "-f", extension)
+    assert len(written) == len(contents)
+    assert len({name.casefold() for name in written}) == len(contents)
+    assert all(len(name.encode()) <= 255 and name.endswith(extension) for name in written)
+    for text in contents.values():
+        assert sum(text in output for output in written.values()) == 1, text
+    assert f"{tmp_path / 'in' / '[red] :smile:' / 'report.txt'} -> " in log  # printed literally
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["n" * 248 + ".txt", "न" * 82 + ".txt", "a." + "x" * 248],
+    ids=["long name", "long Hindi name", "long extension"],
+)
+def test_clashing_names_at_the_length_limit_still_finish(tmp_path, settings, name):
+    """With ".md" added, these names are at or near the 255 bytes a file name may have."""
+    assert 250 <= len(f"{name}.md".encode()) <= 255
+    contents = {f"{folder}/{name}": f"words from folder {folder}" for folder in "abc"}
+    written, _ = parse_into(tmp_path, settings, contents)
+    assert sorted(text.strip() for text in written.values()) == [
+        f"words from folder {folder}" for folder in "abc"
+    ]
+    assert all(len(output.encode()) <= 255 for output in written)
+
+
+def test_without_a_clash_the_names_are_the_same_as_before(tmp_path, settings):
+    contents = {"one.txt": "words here one", "sub/two.txt": "words here two"}
+    written, log = parse_into(tmp_path, settings, contents)
+    assert sorted(written) == ["one.txt.md", "two.txt.md"]
+    assert "renamed" not in log
+
+
+# ---------------------------------------------------------------------------- not UTF-8
+
+
+NOT_UTF8 = {
+    name: LOCALES[name] for name in ("ascii C locale", "latin-1", "cp1252", "ascii, strict")
+}
+EVERY_LOCALE = {**NOT_UTF8, "utf-8": LOCALES["utf-8"], "plain C locale": {"LC_ALL": "C"}}
+
+
+@pytest.fixture
+def hindi_files(tmp_path):
+    text = tmp_path / "hindi.txt"
+    text.write_text(HINDI + "\n", encoding="utf-8")
+    pdf = tmp_path / f"{HINDI.split()[0]}.pdf"  # a file name the locale may lack
+    pdf.write_bytes(samples.digital_pdf())
+    return text, pdf
+
+
+def model_that_answers(value):
+    answer = json.dumps({"vendor_name": value})  # ASCII escapes, as it travels
+    return SlowModel(answer={"message": {"content": answer}, "done_reason": "stop"})
+
+
+def assert_no_crash(run):
+    assert b"UnicodeEncodeError" not in run.stdout + run.stderr, run.stderr[-600:]
+
+
+@pytest.mark.parametrize("locale", EVERY_LOCALE.values(), ids=EVERY_LOCALE.keys())
+def test_json_is_utf8_whatever_the_locale(hindi_files, settings, locale):
+    text, _ = hindi_files
+    model = model_that_answers(HINDI)
+    try:
+        runs = [
+            run_bytes(["parse", text, "-f", "json", "-c", settings], locale),
+            run_bytes(
+                ["extract", text, "-f", "json", "--base-url", model.config().llm.base_url]
+                + ["-c", settings],
+                locale,
+            ),
+        ]
+    finally:
+        model.close()
+    for run in runs:
+        assert_no_crash(run)
+        assert run.returncode == 0, run.stderr
+        assert HINDI.encode() in run.stdout  # real UTF-8, not "?" and not escapes
+        json.loads(run.stdout.decode("utf-8"))
+
+
+@pytest.mark.parametrize("locale", EVERY_LOCALE.values(), ids=EVERY_LOCALE.keys())
+@pytest.mark.parametrize("command", ["extract", "engines", "triage"])
+def test_the_tables_do_not_crash(hindi_files, settings, command, locale):
+    text, pdf = hindi_files
+    model = model_that_answers(HINDI)
+    arguments = {
+        "extract": ["extract", text, "--base-url", model.config().llm.base_url],
+        "engines": ["engines"],
+        "triage": ["triage", pdf],
+    }[command]
+    try:
+        run = run_bytes([*arguments, "-c", settings], {**locale, "COLUMNS": "200"})
+    finally:
+        model.close()
+    assert_no_crash(run)
+    assert run.returncode == 0, run.stderr
+    expected = {"extract": b"vendor_name", "engines": b"pdf_text", "triage": b"digital"}
+    assert expected[command] in run.stdout
+
+
+def test_a_table_replaces_only_what_the_terminal_cannot_show(hindi_files, settings):
+    text, _ = hindi_files
+    model = model_that_answers(f"café {HINDI}")
+    try:
+        arguments = ["extract", text, "--base-url", model.config().llm.base_url, "-c", settings]
+        latin = run_bytes(arguments, {**LOCALES["latin-1"], "COLUMNS": "200"})
+        utf8 = run_bytes(arguments, {**LOCALES["utf-8"], "COLUMNS": "200"})
+    finally:
+        model.close()
+    shown = latin.stdout.decode("latin-1")
+    assert "café" in shown and "?????? ??????" in shown  # é exists in latin-1, Hindi does not
+    assert f"café {HINDI}" in utf8.stdout.decode("utf-8")  # nothing is replaced in UTF-8
+
+
+@pytest.mark.parametrize("extra", [["-f", "json"], []], ids=["json", "table"])
+def test_a_broken_character_from_the_model_does_not_crash(hindi_files, settings, extra):
+    text, _ = hindi_files
+    model = model_that_answers("bad \ud800 value")  # half of a character pair
+    try:
+        url = model.config().llm.base_url
+        run = run_bytes(["extract", text, "--base-url", url, "-c", settings, *extra])
+    finally:
+        model.close()
+    assert_no_crash(run)
+    assert run.returncode == 0, run.stderr
+    if extra:  # the JSON keeps the value, written as a JSON escape
+        [value] = [f["value"] for f in json.loads(run.stdout.decode("utf-8"))["fields"]]
+        assert value == "bad \ud800 value"

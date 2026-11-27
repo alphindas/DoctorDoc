@@ -35,12 +35,12 @@ def stem_of(doc: Document) -> str:
 # ---------------------------------------------------------------------------- shared
 
 
-def empty_state(tab: str) -> None:
+def empty_state(tab: str, storage_note: str) -> None:
     with st.container(border=True, key=f"card_empty_{tab}"):
         card_title("Start here")
         st.write(
             "Add a file in the sidebar (or pick one of the examples), then click **Parse document**. "
-            "Nothing is stored: files are read from a temporary folder and deleted."
+            f"{storage_note}"
         )
 
 
@@ -319,9 +319,7 @@ def extract_tab(entry: Entry, config: Config) -> None:
     store = st.session_state.setdefault("extractions", {})
     key = (entry.key, SCHEMAS[label], config.llm.model)
     if clicked:
-        with st.spinner(
-            f"Asking {config.llm.model}… a small local model can take a minute on CPU."
-        ):
+        with st.spinner(f"Asking {config.llm.model}… a small model on a CPU can take a minute."):
             store[key] = state.extraction(doc, SCHEMAS[label], config)
     if key in store:
         _show_extraction(doc, store[key], config, entry.key)

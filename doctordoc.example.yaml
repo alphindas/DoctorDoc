@@ -2,6 +2,8 @@
 quality_threshold: 0.55        # engine output below this score is rejected, next engine is tried
 gpu: auto                      # auto | on | off
 merge_mixed_pages: true        # mixed pages: also add text that only the losing engine found
+# THIS TURNS THE PARSE CACHE ON: each parsed document's text is kept in this folder until you delete
+# it. Remove the line to turn the cache off. (An empty value does not turn it off.)
 cache_dir: .cache/doctordoc    # parsed results kept on disk, keyed by file hash
 
 # Which engines to try, in order, for each kind of PDF page.
@@ -16,7 +18,8 @@ timeouts:
   docling: 60
   rapidocr: 30
 
-# Optional cloud vision fallback. OFF by default: nothing leaves your machine.
+# Optional cloud vision fallback. OFF by default. When on, page images are sent to base_url even if
+# api_key is empty. In the web UI, the "Local only" switch replaces `enabled`.
 cloud:
   enabled: false
   base_url: https://api.openai.com/v1

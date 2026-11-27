@@ -87,8 +87,8 @@ When behaviour changes, update the README (also its limits) and the "Unreleased"
 ## License rules
 
 - DoctorDoc is Apache-2.0.
-- A default engine must be under the MIT or Apache-2.0 license. (Some libraries it uses are BSD-licensed, such as
-  NumPy.)
+- A default engine must be under the MIT, Apache or BSD license, as in the
+  [license table](README.md#engines-and-licenses).
 - **No AGPL code, such as PyMuPDF.** It would force users of DoctorDoc to publish their own code.
 - **Check the license of any new engine** before you add it: the code, the model weights and what it pulls in. Add it to
   the [license table](README.md#engines-and-licenses). An engine with limits may only be an optional plugin that users

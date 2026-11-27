@@ -1,4 +1,4 @@
-"""page_chains and timeouts: a partial override changes only the entries it names."""
+"""The tables of settings: a partial override changes only the entries it names."""
 
 import json
 from pathlib import Path
@@ -6,8 +6,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+import samples
 from doctordoc import parse
-from doctordoc.config import DEFAULT_PAGE_CHAINS, DEFAULT_TIMEOUTS, Config
+from doctordoc.config import DEFAULT_FILE_CHAINS, DEFAULT_PAGE_CHAINS, DEFAULT_TIMEOUTS, Config
 from doctordoc.engines.ocr_rapid import RapidOcrEngine
 from doctordoc.engines.ocr_tesseract import TesseractEngine
 from doctordoc.service import config_from_json, config_to_json
@@ -17,7 +18,8 @@ SCANNED = Path(__file__).resolve().parent.parent / "examples" / "invoice_scanned
 
 @pytest.fixture(autouse=True)
 def no_outside_settings(monkeypatch):
-    for name in ("PAGE_CHAINS", "PAGE_CHAINS__DIGITAL", "PAGE_CHAINS__SCANNED", "TIMEOUTS"):
+    names = ["PAGE_CHAINS", "PAGE_CHAINS__DIGITAL", "PAGE_CHAINS__SCANNED", "TIMEOUTS"]
+    for name in [*names, "FILE_CHAINS__CSV", "FILE_CHAINS__DOCX"]:
         monkeypatch.delenv(f"DOCTORDOC_{name}", raising=False)
 
 
@@ -71,7 +73,7 @@ def test_an_empty_list_still_means_no_engines(tmp_path, monkeypatch, source):
     assert doc.text == "" and [d.engine for d in doc.decisions] == ["triage"]  # none tried
 
 
-@pytest.mark.parametrize("table", ["page_chains", "timeouts"])
+@pytest.mark.parametrize("table", ["page_chains", "file_chains", "timeouts"])
 def test_an_empty_table_changes_nothing(tmp_path, table):
     assert getattr(from_file(tmp_path, {table: {}}), table) == getattr(Config(), table)
 
@@ -109,3 +111,36 @@ def test_the_round_trip_the_ui_uses_keeps_the_tables():
     config = Config(page_chains={"scanned": []}, timeouts={"docling": 1})
     again = config_from_json(config_to_json(config))
     assert (again.page_chains, again.timeouts) == (config.page_chains, config.timeouts)
+
+
+# ---------------------------------------------------------------------------- file_chains
+
+
+def test_one_file_chain_leaves_the_other_file_types_working(tmp_path, monkeypatch):
+    from_a_file = from_file(tmp_path, {"file_chains": {"csv": ["native"]}})
+    with_variable(monkeypatch, "FILE_CHAINS__CSV", ["native"])
+    for config in (from_a_file, Config()):
+        assert config.file_chains == {**DEFAULT_FILE_CHAINS, "csv": ["native"]}
+        config.gpu = "off"
+        doc = parse(samples.docx_bytes(), config, filename="report.docx")
+        assert "Daily Report" in doc.text and doc.warnings == []
+
+
+@pytest.mark.parametrize("source", ["file", "variable"])
+def test_an_empty_file_chain_still_means_no_engines(tmp_path, monkeypatch, source):
+    if source == "file":
+        config = from_file(tmp_path, {"file_chains": {"docx": []}})
+    else:
+        with_variable(monkeypatch, "FILE_CHAINS__DOCX", [])
+        config = Config()
+    assert config.file_chains == {**DEFAULT_FILE_CHAINS, "docx": []}
+    doc = parse(samples.docx_bytes(), config, filename="report.docx")
+    assert doc.text == "" and doc.warnings == ["No engine chain is configured for 'docx'."]
+
+
+def test_changing_one_merged_file_chain_changes_no_other_and_no_default():
+    before = {name: list(chain) for name, chain in DEFAULT_FILE_CHAINS.items()}
+    config = Config(file_chains={"csv": ["native"]})
+    config.file_chains["docx"].append("extra")  # docx and pptx share one default list
+    assert config.file_chains["pptx"] == before["pptx"]
+    assert DEFAULT_FILE_CHAINS == before

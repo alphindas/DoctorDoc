@@ -1,5 +1,8 @@
-"""Cloud vision model fallback. OFF by default: nothing leaves your machine unless you
-turn it on (config: cloud.enabled = true) and give it an OpenAI-compatible endpoint.
+"""Cloud vision model fallback: sends page images to an OpenAI-compatible server. OFF by default.
+
+When it is on, it needs no API key to send a page, and cloud.base_url is OpenAI's address unless
+you change it. It is turned on by cloud.enabled; in the web UI, the "Local only" switch replaces
+that setting.
 """
 
 from __future__ import annotations

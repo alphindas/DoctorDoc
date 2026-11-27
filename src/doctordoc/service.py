@@ -8,11 +8,13 @@ explain the router's choice in plain English. The UI only calls these and draws 
 from __future__ import annotations
 
 import io
+import ipaddress
 import re
 import tempfile
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from doctordoc.config import Config
 from doctordoc.detect import IMAGE_TYPES, FileInfo, detect
@@ -25,6 +27,16 @@ from doctordoc.router import Router
 OCR_ENGINES = ("paddle_vl", "rapidocr", "tesseract", "cloud_vlm")
 CLOUD_ENGINES = ("cloud_vlm",)
 
+# What a front end says about privacy. Keep it true: the cloud engine needs no API key to send.
+CLOUD_PRIVACY_NOTE = (
+    'Pages can be sent to the cloud server whenever "Local only" is off, even when no API key is '
+    'set. Turning "Local only" on is what keeps pages on this computer.'
+)
+REMOTE_LLM_NOTE = (
+    "Extract sends the document's text to the model server in llm.base_url, which may not be "
+    'this computer. "Local only" does not stop that.'
+)
+
 # ---------------------------------------------------------------------------- settings
 
 
@@ -34,7 +46,8 @@ class UiSettings:
 
     disabled_engines: set[str] = field(default_factory=set)
     forced_ocr: str | None = None  # None = Auto: the router decides
-    local_only: bool = True  # True: no page ever leaves the machine (cloud fallback off)
+    # True: the cloud engine is off. It says nothing about the model server that Extract uses.
+    local_only: bool = True
     merge_mixed_pages: bool = True
     llm_model: str | None = None
 
@@ -47,7 +60,7 @@ def apply_settings(base: Config, settings: UiSettings) -> Config:
         config.llm.model = settings.llm_model
 
     disabled = set(settings.disabled_engines)
-    config.cloud.enabled = not settings.local_only
+    config.cloud.enabled = not settings.local_only  # this replaces cloud.enabled from the config
     if settings.local_only:
         disabled.update(CLOUD_ENGINES)  # the promise of "local only", even if the config says more
 
@@ -63,6 +76,32 @@ def apply_settings(base: Config, settings: UiSettings) -> Config:
         for kind, chain in chains.items():
             chains[kind] = [name for name in chain if name not in disabled]
     return config
+
+
+def llm_privacy_note(config: Config) -> str | None:
+    """A warning when the model server for Extract may be on another computer, else None."""
+    try:
+        host = urlsplit(config.llm.base_url).hostname or ""
+        local = host == "localhost" or ipaddress.ip_address(host).is_loopback
+    except ValueError:  # another name, or not an address at all: do not promise anything
+        local = False
+    return None if local else REMOTE_LLM_NOTE
+
+
+def storage_note(config: Config) -> str:
+    """What a front end says about documents on disk. It only describes the settings."""
+    if config.cache_dir is not None:  # also "" in a file or variable: that means this folder
+        folder = Path(config.cache_dir).resolve()
+        return (
+            "The parse cache is ON: a file with each parsed document's text is kept in "
+            f"`{folder}` until you delete it. To turn the cache off, remove cache_dir from the "
+            "config file and unset DOCTORDOC_CACHE_DIR (an empty value does not turn it off)."
+        )
+    return (
+        "The parse cache is off. Uploads go to a temporary folder and are deleted after parsing, "
+        "and DoctorDoc keeps no other copy of them or their text on disk. If it is stopped or "
+        "crashes while parsing, the temporary copy can stay there."
+    )
 
 
 def config_to_json(config: Config) -> str:
@@ -92,8 +131,9 @@ def parse_uploads(
 ) -> list[Document]:
     """Parse uploaded files. Each is written to a temporary folder, parsed, and deleted.
 
-    Nothing is kept on disk afterwards. A bad file gives a Document with `.error` set; it
-    never raises, and it never stops the other files.
+    If config.cache_dir is set, the parsed result, with the document's text, is also written to
+    that folder and stays there. A bad file gives a Document with `.error` set; it never
+    raises, and it never stops the other files.
     """
     router = Router(config)
     documents: list[Document] = []

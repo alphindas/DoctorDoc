@@ -19,6 +19,8 @@ history and the [README](README.md), which has the details and the limits.
 - A local HTTP API (`doctordoc api`) with `/health`, `/engines`, `/parse` and `/extract`. Uploads over `max_file_mb`
   are refused while they arrive, temporary files are deleted after each request, and there is no login.
 - A GitHub Actions workflow: ruff, the tests, and a check that an install with no extras can parse a file.
+- A warning at startup (`parse`, `extract`, `ui` and the HTTP API) when cloud is enabled: it lists the page kinds and
+  file types whose pages could be sent to the cloud server, and how to prevent it. It does not change which engines run.
 - The Apache-2.0 license.
 
 ### Changed
@@ -30,12 +32,16 @@ history and the [README](README.md), which has the details and the limits.
 - **The command line's Markdown is printed directly too**: `parse` without `--out` writes the same bytes as `--out`
   (UTF-8, whatever the locale). There is no extra blank line at the end any more. Control characters in a document now
   all reach the terminal.
-- **A partial `page_chains` or `timeouts` is merged over the defaults**, from a config file or an environment variable.
-  Before, it replaced the whole table.
-  - Leaving a page kind out no longer disables it. Write an empty list, for example `scanned: []`.
-  - The default chains end with `cloud_vlm`. With `cloud.enabled: true`, a page kind that your settings leave out can
-    now be sent to the cloud server.
+- **A partial `page_chains`, `file_chains` or `timeouts` is merged over the defaults**, from a config file or an
+  environment variable. Before, it replaced the whole table.
+  - Leaving a page kind or file type out no longer disables it. Write an empty list, for example `scanned: []`.
+  - The default chains for scanned and garbled pages and for images end with `cloud_vlm`. With `cloud.enabled: true`, a
+    page kind or file type that your settings leave out can now be sent to the cloud server.
   - A timeout you leave out now has that engine's own default. Before, the router used 60 s.
+- **`parse --out` names outputs differently when inputs share a file name**: their folders are put in front, then a
+  number if needed. Each `wrote` line now shows the input and the output file.
+- On an output encoding that lacks a character, the command line's tables show `?` in its place. JSON is written as
+  UTF-8 whatever the locale.
 - **NumPy (1.26 or newer) is a core dependency** and is no longer listed in the `api` extra.
 - **The HTTP API is stricter.** Requests that it used to accept can now be refused:
   - HTTP 403 when the `Origin` header does not match `Host`, or when `Host` is not `localhost`, `127.0.0.1` or `::1`.
@@ -55,6 +61,7 @@ history and the [README](README.md), which has the details and the limits.
 - Field extraction has limits: by default 4096 answer tokens, 300 s per call, 600 s per document and 1 retry (before:
   no answer limit, 600 s and 2 retries).
 - A PDF page now counts as mixed when pictures cover 10% of it (before: 35%), so smaller pictures with text get OCR.
+- ONNX Runtime's telemetry is off by default (`ORT_DISABLE_TELEMETRY=1`). A value you set yourself, such as `0`, wins.
 
 ### Fixed
 
@@ -65,4 +72,9 @@ history and the [README](README.md), which has the details and the limits.
 - `parse` without `--out` wrapped long Markdown lines, turned `:smile:` into an emoji, and could stop with
   `UnicodeEncodeError` when the output encoding lacked a character.
 - An install with no extras could not parse anything.
+- `parse --out` lost results when two inputs had the same file name: one output overwrote the other.
+- JSON from `parse` and `extract`, and the command line's tables, could stop with `UnicodeEncodeError`: in some output
+  encodings, or when a model's answer held half of a character pair.
 - The hint printed by `doctordoc ui` said `doctordoc` instead of `doctordoc[ui]`.
+- The web UI said the cloud engine is skipped without an API key. It is not: only keeping the cloud off protects you.
+- The web UI and docs said nothing is stored, even with the parse cache on, and called any Extract model "local".

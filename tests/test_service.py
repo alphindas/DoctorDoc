@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import tempfile
 import zipfile
 from pathlib import Path
+
+import pytest
 
 import samples
 from doctordoc import service
@@ -197,3 +200,76 @@ def test_split_warnings_picks_out_the_wrong_extension_warning():
 def test_file_too_big_message():
     assert service.file_too_big(10, Config()) is None
     assert "limit" in (service.file_too_big(300 * 1024 * 1024, Config()) or "")
+
+
+# ---------------------------------------------------------------------------- privacy words
+
+
+def test_the_cloud_note_says_a_missing_key_does_not_protect():
+    assert service.CLOUD_PRIVACY_NOTE == (
+        'Pages can be sent to the cloud server whenever "Local only" is off, even when no API key '
+        'is set. Turning "Local only" on is what keeps pages on this computer.'
+    )
+
+
+def test_local_only_off_turns_the_cloud_engine_on_even_without_a_key_or_cloud_enabled():
+    base = Config(cloud={"enabled": False, "api_key": ""})
+    for local_only, enabled in [(True, False), (False, True)]:
+        config = service.apply_settings(base, service.UiSettings(local_only=local_only))
+        assert config.cloud.enabled is enabled
+        engine = Router(config).engines["cloud_vlm"]
+        assert (engine.missing_reason() is None) is enabled  # the key plays no part
+
+
+def test_an_empty_cloud_address_keeps_the_cloud_off_whatever_the_switch_says():
+    """The advice in docs/deploy-demo.md."""
+    base = Config(cloud={"base_url": ""})
+    config = service.apply_settings(base, service.UiSettings(local_only=False))
+    assert Router(config).engines["cloud_vlm"].missing_reason() is not None
+
+
+@pytest.mark.parametrize(
+    "base_url, remote",
+    [
+        ("http://localhost:11434", False),
+        ("http://127.0.0.1:11434", False),
+        ("http://[::1]:8000/v1", False),
+        ("https://api.openai.com/v1", True),
+        ("http://192.168.1.20:11434", True),
+        ("http://localhost.example.com", True),
+        ("http://127.0.0.1@models.example.com", True),
+        ("http://[broken", True),
+        ("not an address", True),
+    ],
+)
+def test_the_model_server_note_appears_unless_the_server_is_surely_local(base_url, remote):
+    config = Config(llm={"base_url": base_url})
+    assert (service.llm_privacy_note(config) == service.REMOTE_LLM_NOTE) is remote
+
+
+# ---------------------------------------------------------------------------- storage words
+
+
+@pytest.mark.parametrize("cache", [False, True], ids=["cache off", "cache on"])
+def test_the_storage_note_says_what_really_stays_on_disk(tmp_path, monkeypatch, cache):
+    temp, work = tmp_path / "temp", tmp_path / "work"
+    temp.mkdir()
+    work.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp))
+    monkeypatch.chdir(work)
+    config = Config(gpu="off", cache_dir="my-cache" if cache else None)
+
+    [doc] = service.parse_uploads([("note.txt", b"synthetic marker words")], config)
+
+    assert doc.error is None
+    left = [p for p in tmp_path.rglob("*") if p.is_file()]
+    kept = [p for p in left if b"synthetic marker words" in p.read_bytes()]
+    note = service.storage_note(config)
+    if cache:
+        assert "The parse cache is ON" in note and f"`{work / 'my-cache'}`" in note
+        assert "remove cache_dir" in note and "unset DOCTORDOC_CACHE_DIR" in note
+        assert kept == left and [p.parent for p in kept] == [work / "my-cache"]
+    else:
+        assert "The parse cache is off" in note and "keeps no other copy" in note
+        assert "stopped or crashes" in note and "Nothing is stored" not in note
+        assert left == []

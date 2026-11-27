@@ -13,13 +13,40 @@ engines (native readers, pdf_text, **RapidOCR**) on a small CPU machine. No Olla
 |---|---|---|
 | Docling | pulls in PyTorch (GBs of RAM and disk); a free host will run out | not installed (`requirements.txt` has only `ui` and `ocr`), and not in the demo chains |
 | PaddleOCR-VL | did not fit on our CPU-only test machine; it may need more RAM or a GPU build of PaddlePaddle (seen during development, no result file saved) | not installed, not in the chains |
-| Cloud fallback | would send visitors' pages to a third party | `cloud.enabled: false` in `doctordoc.demo.yaml`, and no API key is set |
+| Cloud fallback | would send visitors' pages to a third party | only keeping it off protects them, and `cloud.enabled: false` is **not enough** in the web UI: see [Keeping the cloud off](#keeping-the-cloud-off) |
 | Ollama / Extract tab | there is no model server on a free host | the Extract tab shows "Cannot reach the LLM server". Leave it, or point `llm` at a hosted OpenAI-compatible server and keep the key in the host's secrets (then page text leaves the machine) |
 | Big uploads | memory | `max_file_mb: 10` in the demo config |
-| Private documents | strangers use it | say on the page that only non-sensitive files should be uploaded (files are processed in memory and a temp folder, then deleted; nothing is stored by DoctorDoc) |
+| Private documents | strangers use it | say on the page that only non-sensitive files should be uploaded (each upload goes to a temporary folder and that copy is deleted after parsing; parsed results stay in the app's memory. With the parse cache off, DoctorDoc keeps no copy on disk. The demo config has no `cache_dir` line, so **check that `DOCTORDOC_CACHE_DIR` is not set on the host**, or add `cache_dir: null`. See [what is kept on disk](../README.md#what-is-kept-on-disk)) |
 
 The demo config is `doctordoc.demo.yaml`; the app reads it from the environment variable
 `DOCTORDOC_UI_CONFIG`.
+
+## Keeping the cloud off
+
+**Only keeping the cloud off protects your visitors' pages. A missing API key does not:** the page image is sent
+without one.
+
+- `cloud.enabled: false` in `doctordoc.demo.yaml` does **not** keep the cloud off in the web UI. The "Local only"
+  switch replaces that setting, and **any visitor can switch it off**.
+- In a test with the demo's settings, no API key and a fake cloud server in place of the real address: a visitor who
+  switched "Local only" off, and then switched on `cloud_vlm` in the Engines list or chose it as the OCR engine, had
+  the page image sent. With "Local only" left on, nothing was sent to the cloud. You cannot make visitors leave it on.
+- The demo config sets no `cloud.base_url`, so the address is the default, `https://api.openai.com/v1`.
+- **To keep the cloud off in a hosted demo, also set an empty address** in your copy of the config:
+
+  ```yaml
+  cloud:
+    enabled: false
+    base_url: ""
+  ```
+
+  With this, `cloud_vlm` could not be switched on or chosen, even with "Local only" off. **The demo config in this
+  repository does not have the `base_url` line.**
+- The sidebar says "Local only" keeps pages on "this computer". In a hosted demo that is **your server**: a visitor's
+  file is uploaded to it.
+
+(Seen during development with Streamlit's test runner on one machine, no result file saved. In Chromium, only the
+path through the Engines list and Compare engines was repeated.)
 
 ## Streamlit Community Cloud (simplest)
 

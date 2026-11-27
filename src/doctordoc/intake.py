@@ -70,7 +70,7 @@ def extract_members(data: bytes, file_type: str, budget: Budget) -> list[Member]
 
 
 def safe_name(name: str) -> str:
-    """Keep only the last part of a path and drop odd characters. We never write to disk."""
+    """Keep only the last part of a path and drop odd characters."""
     base = PurePosixPath(name.replace("\\", "/")).name or "unnamed"
     return re.sub(r"[^\w.\- ()]", "_", base)[:120]
 

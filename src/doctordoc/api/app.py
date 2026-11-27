@@ -1,10 +1,11 @@
 """The HTTP API. A thin layer: it uses the same parse and extract code as the command line.
 
-There is no login, and nothing is stored: each upload lives in a temporary folder until its
-request ends. /parse and /extract take turns (one lock for both), because only one heavy
-model should be in memory at a time. At most `api.max_waiting` others wait for their turn,
-with no time limit; the next one gets a 503. The lock and the count belong to one server
-process, so run a single worker.
+There is no login. The API keeps no copy of uploads: each one lives in a temporary folder until
+its request ends (a killed process can leave it behind), and the parse cache is always off.
+
+/parse and /extract take turns (one lock for both), because only one heavy model should be in
+memory at a time. At most `api.max_waiting` others wait for their turn, with no time limit; the
+next one gets a 503. The lock and the count belong to one server process, so run a single worker.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from starlette.concurrency import run_in_threadpool
 from doctordoc import __version__
 from doctordoc.api.guards import LOCAL_HOSTS, SameSiteOnly, WaitingLine
 from doctordoc.api.uploads import BodyLimit, saved_upload
+from doctordoc.cloud_warning import warn_about_cloud
 from doctordoc.config import Config, LLMConfig
 from doctordoc.extract import BUILTIN_SCHEMAS, LLMError, extract, list_models
 from doctordoc.models import Document
@@ -42,7 +44,8 @@ def create_app(config: Config | None = None, *, local_only: bool = True) -> Fast
     Then any Host header is accepted, unless `api.allowed_hosts` lists the accepted ones.
     """
     config = (config or Config()).model_copy(deep=True)
-    config.cache_dir = None  # the parse cache would keep documents on disk: the API stores nothing
+    config.cache_dir = None  # the parse cache would keep documents' text on disk: always off here
+    warn_about_cloud(config)
     docs = config.api.docs
     app = FastAPI(
         title="DoctorDoc",

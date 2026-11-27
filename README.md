@@ -40,8 +40,10 @@ included, reach your terminal unchanged, as with `cat`.
 You can give `parse` a folder (its subfolders are read too). As Markdown, each document of a folder with several files
 follows a `===== path =====` line. With `-f json`, a folder with several files, or none, prints **one JSON list** in path
 order, and the `===== path =====` lines go to stderr. A folder with one file prints one object, like a single file. With
-`--out FOLDER`, each output file is named after its input's file name only, so two inputs with the same name in
-different subfolders write to the same file and **the first result is lost**.
+`--out FOLDER`, each output file is named after its input (`report.txt.md`). When inputs would share a name (also if
+only capitals differ), their folders are put in front (`a_report.txt.md`), then a number if that is still taken, so no
+result overwrites another. Each input and its output file are printed. Files already in `FOLDER`, for example from an
+earlier run, are still overwritten.
 
 ```python
 from doctordoc import parse
@@ -68,11 +70,77 @@ what the file does not set. So if you copy the example file, variables for the s
 those lines to use the variables. Command-line options that change a setting, such as `--model` or `--no-docs`, are
 applied after both.
 
-**`page_chains` and `timeouts` are merged with the defaults**, so name only the entries you want to change, in a file
-or in a variable such as `DOCTORDOC_PAGE_CHAINS__DIGITAL='["pdf_text"]'`. An entry you leave out keeps its default.
-To use no engines for a page kind, write an empty list, for example `scanned: []`. The default chains end with
-`cloud_vlm`, which runs only if `cloud.enabled` is true: **with cloud on, a page kind you leave out can be sent to the
-cloud server**. `file_chains` is not merged ([limits](#known-limitations)).
+**`page_chains`, `file_chains` and `timeouts` are merged with the defaults**, so name only the entries you want to
+change, in a file or in a variable such as `DOCTORDOC_PAGE_CHAINS__DIGITAL='["pdf_text"]'`. An entry you leave out
+keeps its default. To use no engines for a page kind or file type, write an empty list, for example `scanned: []`.
+The default chains for scanned and garbled pages and for images end with `cloud_vlm`, which runs only if
+`cloud.enabled` is true: **with cloud on, a page kind or file type you leave out can be sent to the cloud server**.
+
+**Only keeping the cloud off protects your pages. A missing API key does not.** On the command line, in the HTTP API
+and in Python, "off" means `cloud.enabled: false`, the default. **In the web UI the "Local only" switch replaces that
+setting**, so "off" means leaving the switch on.
+
+**The cloud warning.** When the config turns the cloud engine on, `parse`, `extract`, `ui` and the HTTP API log one
+warning at startup. It lists the page kinds and file types whose pages the chains could send, and how to prevent it.
+`ui` gives no warning if the config leaves the cloud off, although the switch can turn it on later. Using `parse()`
+from Python gives no warning, and the warning does not change which engines run.
+
+- To stop it for one entry, take `cloud_vlm` out of that chain. `[]` also works, except for `mixed` (below), but then
+  no engine reads that kind of page or file, not even a local one.
+- The router never gives the cloud engine a digital PDF page or a file that is not a PDF or an image: the engine
+  refuses them. (Compare engines, below, is different.)
+- **Mixed pages also use the `scanned` chain**, so `mixed: []` alone does not keep them off the cloud: take
+  `cloud_vlm` out of the `scanned` chain too.
+- **An empty `cloud.api_key` does not stop pages being sent.** The page image is sent without a key, whether or not the
+  server then accepts it.
+- In the web UI, pages can be sent whenever "Local only" is off, whatever `cloud.enabled` says. In tests, nothing was
+  sent until `cloud_vlm` was also on in the sidebar's Engines list, or chosen as the OCR engine. **Do not rely on that
+  extra step.** With `cloud_vlm` on in the list, **Compare engines** runs it on a PDF or image whatever the chains say.
+  (Seen during development, no result file saved.)
+- An empty `cloud.base_url` (`base_url: ""`) makes the cloud engine unavailable, also in the web UI.
+
+### What is kept on disk
+
+- **Parse cache off (the default):** the web UI and the HTTP API write each upload to a temporary folder and delete it.
+  After a normal run, DoctorDoc keeps no copy of your documents or their text on disk. **If it is stopped or crashes
+  while parsing, the temporary copy can stay there** (`kill` and `kill -9` left it behind in a test).
+- **Parse cache on (`cache_dir` is set):** for each parsed file, also one inside a ZIP or email, a JSON file with its
+  name and text (OCR text too) is written to that folder, and **stays until you delete it**. This applies to the web
+  UI, the command line and Python, not to the HTTP API, which always turns the cache off. A relative folder starts
+  from the program's working folder; the web UI shows the full path.
+- **[doctordoc.example.yaml](doctordoc.example.yaml) turns the cache on** (`cache_dir: .cache/doctordoc`).
+- **To turn it off,** remove `cache_dir` from your config file and unset `DOCTORDOC_CACHE_DIR`. Writing
+  `cache_dir: null` in the config file also works, even with the variable set. **An empty value does not turn it
+  off:** with `DOCTORDOC_CACHE_DIR=` or `cache_dir: ""`, the cache files are written into the working folder. Turning
+  the cache off does not delete old files.
+- **Not covered by the above:** files you ask for (`--out`, downloads), whatever a model server or cloud server keeps
+  of what it receives, and files that other software writes (see [ONNX Runtime telemetry](#onnx-runtime-telemetry)).
+
+(Seen during development with synthetic files and the native readers, `pdf_text`, RapidOCR and Tesseract, by looking
+for new files in the home and temporary folders afterwards; no result file saved. Docling, MarkItDown and PaddleOCR-VL
+were not checked.)
+
+### ONNX Runtime telemetry
+
+RapidOCR runs on ONNX Runtime. **ONNX Runtime may collect telemetry in official builds.** The `Privacy.md` file in its
+package says official builds have it on by default and send it to Microsoft. **DoctorDoc turns it off by default:**
+`import doctordoc`, which the command line, the web UI and the HTTP API all do, sets `ORT_DISABLE_TELEMETRY=1` unless
+you have set that variable yourself.
+
+- **To turn it back on,** set `ORT_DISABLE_TELEMETRY=0` before you start DoctorDoc. Your value is not overwritten. In
+  our test, `1` and `true` turned telemetry off; `0`, `false` and an empty value left it on.
+- The variable must be set before ONNX Runtime starts. **If your own program imports `onnxruntime` before `doctordoc`,
+  telemetry stays on:** import `doctordoc` first, or set the variable yourself.
+- It is set for the whole process and for programs that process starts, so other code there that uses ONNX Runtime is
+  affected too.
+- **What was verified is only that the telemetry files stop being created:** a device ID, a database that queues
+  records, and a small `.ses` file in the temporary folder. **What is sent, or whether anything is sent, was not
+  verified.** This is not a promise that no data leaves your machine.
+- With telemetry on, the queued records described the machine; no document name or text was found in them as plain
+  text. DoctorDoc does not delete files made earlier. On Linux, look in `~/.cache/Microsoft/DeveloperTools/`.
+
+(Seen during development on Linux with ONNX Runtime 1.32.0 and RapidOCR, with networking off, no result file saved.
+Windows and macOS were not tested. The same `Privacy.md` says an older Windows telemetry method ignores this variable.)
 
 ## How it works
 
@@ -101,7 +169,8 @@ doctordoc ui                     # opens http://localhost:8501; pass --config my
 ```
 
 Pure Python (Streamlit), no JavaScript build. Upload one or many files, or a ZIP; every file is
-written to a temporary folder, parsed, and deleted: nothing is stored. Four tabs:
+written to a temporary folder, parsed, and deleted. With the parse cache off (the default), DoctorDoc keeps no copy;
+with it on, each document's text stays on disk ([what is kept](#what-is-kept-on-disk)). Four tabs:
 
 - **Parse**: detected type (and a warning if the extension lies), one chip per page (digital,
   scanned, mixed, garbled, blank) with page navigation, the page picture next to the extracted
@@ -113,10 +182,12 @@ written to a temporary folder, parsed, and deleted: nothing is stored. Four tabs
 - **Compare engines**: runs each installed engine alone on the same file and shows them side by
   side, with time and text-quality score, and marks the engine the router chose.
 
-The sidebar has the OCR engine (Auto, or force one), **Local only (private)** (on by default; turning
-it off allows the cloud fallback and shows a warning that pages would leave your machine), the
-local Ollama model, the mixed-page merge switch and an on/off list of engines. To host a small public
-demo see [docs/deploy-demo.md](docs/deploy-demo.md). The look is from
+The sidebar has the OCR engine (Auto, or force one), **Local only (private)** (on by default), the
+model for Extract, the mixed-page merge switch and an on/off list of engines. **Pages can be sent to the cloud server
+whenever "Local only" is off, even when no API key is set. Turning "Local only" on is what keeps pages on this
+computer** (the one running DoctorDoc); the switch [replaces `cloud.enabled`](#configuration). It does not change where
+Extract sends the document's text, which is `llm.base_url`; the sidebar warns when that may be another computer.
+To host a small public demo see [docs/deploy-demo.md](docs/deploy-demo.md). The look is from
 [docs/design/mockup.png](docs/design/mockup.png), a design mockup (made-up data, not a screenshot).
 
 ## HTTP API
@@ -306,9 +377,10 @@ Other errors have a body with one key, `detail`.
 - **No login, no HTTPS.** By default it listens on `127.0.0.1` only. `--host` with any other address prints a warning:
   anyone who can reach it can use it.
 - **No CORS headers**, so a web page from another site cannot read the replies in a normal browser.
-- **No storage.** Each upload is written to its own temporary folder, which is deleted when the request ends, also
-  after an error. The parse cache (`cache_dir`) is switched off even if your settings turn it on. If the process is
-  force-killed or the machine loses power, temporary files can be left behind.
+- **No stored copies.** Each upload is written to its own temporary folder, which is deleted when the request ends,
+  also after an error. The parse cache (`cache_dir`) is switched off even if your settings turn it on. If the process is
+  killed or the machine loses power, temporary files can be left behind. See also
+  [what is kept on disk](#what-is-kept-on-disk), including files that other software writes.
 - **Upload size** is capped by `max_file_mb` (default 200). The count is made while the upload arrives, and the whole
   request may be 64 KB larger to make room for the form around the file; the file itself is then checked exactly.
   The cap is on the upload, not on what it expands to: ZIP and email contents have their own limits, but a DOCX, XLSX
@@ -426,7 +498,8 @@ not in the document text (the model made it up): `page` and `source_text` are th
 6. RapidOCR and Tesseract first find **which way up** a page is. A page that already reads well (score 0.75 or more,
    `rotation_early_stop`) is read once; otherwise it is read at 0, 90, 180 and 270 degrees and the best angle is kept.
 7. Only one heavy model is kept in memory at a time, and it is released after each file.
-8. Cloud fallback (`cloud_vlm`) is **off by default**. If you switch it on, page images are sent to the server you configure.
+8. Cloud fallback (`cloud_vlm`) is **off by default**. If you switch it on, page images can be sent to `cloud.base_url`
+   (OpenAI's address unless you change it), even without an API key.
 
 ## Engines and licenses
 
@@ -698,17 +771,14 @@ Honest list, from testing on synthetic documents so far:
   - **After the reply:** Ollama's `prompt_eval_count` and `eval_count` are logged and kept in `result.llm_calls` (not in the JSON report). If the prompt count reaches the safe limit, looks like a cut (about half of `num_ctx`), or prompt plus answer is more than `num_ctx`, there is a warning, every field is marked for review, and `needs_review` also lists `document` (a `prompt_length` entry in `validation_issues` says why).
   - **Not covered:** the estimate is not the model's tokenizer. It can refuse text that would fit (for example long Chinese, Japanese or Hindi text) and can guess too low (for example Malayalam or tables full of numbers). The check after the reply is the backstop; its cut pattern was seen with this one Ollama version and model, and it needs the server to report the counts. OpenAI-compatible servers are not guarded.
 - **Merging the pieces of a long document has limits.** Each piece is a separate model call, and a split document gets a warning. Every list item from every piece is kept, including repeated ones: two identical rig day-rate lines stay two. The risk is the other way: if the model lists a repeated header or total row as an item more than once, it can be counted twice. The invoice and receipt rules flag this only if a subtotal was extracted and the lines do not add up to it; the drilling and form schemas have no rule that checks for an extra item. For a single field, the first non-empty value is still kept. If a later piece gives a different non-empty value, the field goes to `needs_review` and `validation_issues` gets a `merge_conflict` error that shows both values. Its confidence is not lowered for this, and an empty later value does not count. The comparison is exact, so a small difference in spelling or capitals is flagged too. Different values for the same entry in two lists are not compared: both entries are kept. (Checked with a scripted model during development, no result file saved.)
-- **Some command-line output fails in locales that are not UTF-8.** `parse` Markdown is **fixed**: it is now always
-  UTF-8 and exact. The rest was not changed. When standard output was set to `latin-1` or `cp1252`, `parse -f json` and
-  `extract --format json` stopped with `UnicodeEncodeError` on Hindi text, and so did the `extract` table. In a C locale
-  with Python's UTF-8 mode off, JSON worked, but the `extract` and `engines` tables stopped the same way. With Python's
-  default handling of the C locale, everything tried worked. Setting `PYTHONIOENCODING=utf-8` fixed all these cases, and
-  `parse --out FOLDER` always writes UTF-8. (`cp1252` is common for redirected output on Windows; these encodings were
-  only set by environment variables on Linux, and Windows was not tested. Seen during development, no result file saved.)
-- **`file_chains` is replaced, not merged.** Unlike `page_chains` and `timeouts` ([Configuration](#configuration)), a
-  `file_chains` entry in a file or a variable replaces the whole table, and a file type that is not in it has no
-  engines. Copy all the defaults you want to keep.
-- **`mixed: []` does not stop OCR on mixed pages.** For these pages the router also runs the `scanned` chain.
+- **Output on a terminal that is not UTF-8 is not all readable.** The command line no longer stops with
+  `UnicodeEncodeError` (**fixed**): JSON and Markdown are always written as UTF-8, and the tables show `?` for each
+  character the output encoding lacks. So a terminal that expects another encoding shows non-English text in JSON or
+  Markdown wrongly, and a table loses it: use `-f json` or `--out` to keep the text. The HTTP API's `/extract` still
+  answers HTTP 500 if the model returns half of a character pair; the command line now handles that. (Encodings were
+  set by environment variables on Linux; Windows was not tested. Seen during development, no result file saved.)
+- **`mixed: []` does not stop OCR on mixed pages.** For these pages the router also runs the `scanned` chain,
+  including the cloud engine if that chain has it and cloud is on.
 - OCR engines sometimes glue words together across wide gaps (seen during development, no result file saved). Grounding tolerates this, but the Markdown shows it.
 - Field extraction uses a small local model (`llama3.2:3b` by default) and has only been measured on small synthetic sets (invoices and drilling reports).
 - `.msg` (Outlook) attachment reading is not tested: this repo has no `.msg` sample file and no test for it.
