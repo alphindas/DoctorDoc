@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import sys
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -34,6 +36,16 @@ def _print_json(text: str) -> None:
     """JSON goes straight to stdout, never through Rich: Rich wraps long lines (a line break
     inside a text value is not valid JSON), adds colour, and turns ":smile:" into an emoji."""
     typer.echo(text)
+
+
+def _print_markdown(text: str) -> None:
+    """Markdown goes to stdout as the same bytes that --out writes: UTF-8 whatever the locale,
+    with the system's line endings. Not through Rich (it wraps lines and turns ":smile:" into
+    an emoji) and not through click.echo (it removes terminal codes from piped text)."""
+    sys.stdout.flush()  # keep the order if anything was printed as text before
+    # surrogateescape gives a file name that is not valid UTF-8 its own bytes back
+    sys.stdout.buffer.write(text.replace("\n", os.linesep).encode("utf-8", "surrogateescape"))
+    sys.stdout.buffer.flush()
 
 
 def _files_in(target: Path) -> list[Path]:
@@ -89,8 +101,8 @@ def parse(
                 _print_json(text)
         else:
             if len(files) > 1:
-                out.print(f"\n===== {path} =====", markup=False)
-            out.print(text, markup=False, highlight=False)
+                _print_markdown(f"\n===== {path} =====\n")
+            _print_markdown(text)
         if doc.error:
             err.print(f"[red]error[/red] {path.name}: {doc.error}")
         for warning in doc.warnings:
@@ -264,9 +276,7 @@ def ui(
 ) -> None:
     """Open the web UI: upload files, see the router's choices, extract fields, compare engines."""
     import importlib.util
-    import os
     import subprocess
-    import sys
 
     if importlib.util.find_spec("streamlit") is None:
         err.print(
