@@ -30,6 +30,12 @@ def _load_config(path: Path | None, gpu: bool | None = None) -> Config:
     return config
 
 
+def _print_json(text: str) -> None:
+    """JSON goes straight to stdout, never through Rich: Rich wraps long lines (a line break
+    inside a text value is not valid JSON), adds colour, and turns ":smile:" into an emoji."""
+    typer.echo(text)
+
+
 def _files_in(target: Path) -> list[Path]:
     if target.is_dir():
         return sorted(p for p in target.rglob("*") if p.is_file() and not p.name.startswith("."))
@@ -50,7 +56,10 @@ def parse(
     gpu: Annotated[Optional[bool], typer.Option("--gpu/--no-gpu", help="Force GPU on/off.")] = None,  # noqa: UP007
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
-    """Parse a file (or every file in a folder) into Markdown or JSON."""
+    """Parse a file (or every file in a folder) into Markdown or JSON.
+
+    With --format json and no --out, a folder with several files (or none) gives a JSON list.
+    """
     from doctordoc.pipeline import parse_many
 
     if format not in ("md", "json"):
@@ -60,6 +69,9 @@ def parse(
     files = _files_in(target)
     docs = parse_many(files, _load_config(config_path, gpu))
 
+    # several JSON documents one after another are not valid JSON, so they go in one list
+    as_list = format == "json" and not out_dir and len(files) != 1
+    listed: list[str] = []
     failures = 0
     for path, doc in zip(files, docs, strict=True):
         failures += 1 if doc.error else 0
@@ -69,6 +81,12 @@ def parse(
             destination = out_dir / f"{path.name}.{format}"
             destination.write_text(text, encoding="utf-8")
             err.print(f"[green]wrote[/green] {destination}", soft_wrap=True)
+        elif format == "json":
+            if as_list:
+                err.print(f"===== {path} =====", markup=False, highlight=False, soft_wrap=True)
+                listed.append(text)
+            else:
+                _print_json(text)
         else:
             if len(files) > 1:
                 out.print(f"\n===== {path} =====", markup=False)
@@ -79,6 +97,8 @@ def parse(
             err.print(f"[yellow]warning[/yellow] {path.name}: {warning}")
         if explain:
             _print_decisions(doc, path.name)
+    if as_list:
+        _print_json("[" + ",\n".join(listed) + "]")
     if failures:
         raise typer.Exit(code=1)
 
@@ -194,7 +214,7 @@ def extract(
         config.llm.provider = provider  # type: ignore[assignment]
     result = run_extract(file, schema, config)
     if format == "json":
-        out.print(result.to_report_json(), markup=False, highlight=False)
+        _print_json(result.to_report_json())
     else:
         _print_extraction(result)
     for warning in result.warnings:
@@ -249,7 +269,11 @@ def ui(
     import sys
 
     if importlib.util.find_spec("streamlit") is None:
-        err.print('[red]The UI needs Streamlit.[/red] Install it with: pip install "doctordoc[ui]"')
+        err.print(
+            "[red]The UI needs Streamlit.[/red] Install it with: "
+            + escape('pip install "doctordoc[ui]"'),
+            soft_wrap=True,
+        )
         raise typer.Exit(code=1)
     from doctordoc.ui import app as ui_app
 

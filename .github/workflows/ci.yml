@@ -45,3 +45,30 @@ jobs:
       - run: uv venv --python 3.12
       - run: uv pip install -e ".[dev,ui,ocr,api]"
       - run: .venv/bin/python -m pytest -q -rs
+
+  # What a plain install gets, with no extras. The tests job cannot notice a missing core
+  # dependency, because its extras bring many packages along.
+  core-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - run: uv venv --python 3.12
+      - run: uv pip install .
+      # A page that no engine could read still exits 0 and prints comment lines, so
+      # "not empty" is not enough: text from the invoice must be there.
+      - name: Parse a file and check its text is in the output
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP:?}/parsed.md"
+          .venv/bin/doctordoc parse examples/invoice_digital.pdf > "${out:?}"
+          cat "${out:?}"
+          test -s "${out:?}" || { echo "::error::the output is empty"; exit 1; }
+          grep -q "RI-2025-1047" "${out:?}" || { echo "::error::the invoice text is missing"; exit 1; }
