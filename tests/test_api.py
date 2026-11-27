@@ -38,6 +38,7 @@ from test_extract import GOOD_INVOICE, FakeLLM  # noqa: E402
 from test_prompt_guard import Ollama  # noqa: E402
 
 REAL_HTTPX_GET = httpx.get
+BASE_URL = "http://127.0.0.1:8000"
 
 
 # ---------------------------------------------------------------------------- fixtures
@@ -84,14 +85,18 @@ def script_model(monkeypatch, fake):
     monkeypatch.setattr("doctordoc.extract.extractor.LLMClient", lambda config: fake.client())
 
 
+def local_client(app, **kwargs) -> TestClient:
+    return TestClient(app, base_url=BASE_URL, **kwargs)
+
+
 @pytest.fixture
 def client(config) -> TestClient:
-    return TestClient(create_app(config))
+    return local_client(create_app(config))
 
 
 def small_client(config, max_file_mb) -> TestClient:
     config.max_file_mb = max_file_mb
-    return TestClient(create_app(config))
+    return local_client(create_app(config))
 
 
 def send(client, path, name, content, **kwargs):
@@ -134,7 +139,7 @@ def test_health_with_a_really_closed_port(config, monkeypatch):
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
     config.llm.base_url = f"http://127.0.0.1:{port}"
-    client = TestClient(create_app(config))
+    client = local_client(create_app(config))
     assert client.get("/health").json()["ollama_reachable"] is False
     assert extract_request(client, "a.csv", samples.csv_bytes()).status_code == 503
 
@@ -143,13 +148,13 @@ def test_health_with_a_really_closed_port(config, monkeypatch):
 def test_health_never_crashes_on_a_bad_server_setting(config, monkeypatch, url):
     monkeypatch.setattr(httpx, "get", REAL_HTTPX_GET)
     config.llm.base_url = url
-    reply = TestClient(create_app(config)).get("/health")
+    reply = local_client(create_app(config)).get("/health")
     assert reply.status_code == 200 and reply.json()["ollama_reachable"] is False
 
 
 def test_health_does_not_report_ollama_for_another_provider(config):
     config.llm = LLMConfig(provider="openai", base_url="http://127.0.0.1:1/v1")
-    assert TestClient(create_app(config)).get("/health").json()["ollama_reachable"] is None
+    assert local_client(create_app(config)).get("/health").json()["ollama_reachable"] is None
 
 
 def test_engines_is_the_same_data_as_the_engines_command(client, config):
@@ -260,23 +265,31 @@ def test_the_limit_on_the_file_itself_is_exact(config):
     assert send(client, "/parse", "a.csv", fits + b"x").status_code == 413
 
 
-def drive(app, chunks, headers=()):
-    """Feed a raw request to the app piece by piece: (status, body, bytes the app asked for)."""
-    pulled, sent = [], []
-    scope = {
+LOCAL_HOST = (b"host", b"127.0.0.1:8000")
+
+
+def upload_scope(headers=(), path="/parse"):
+    """A raw upload request. `headers` are added to the content type."""
+    return {
         "type": "http",
         "asgi": {"version": "3.0"},
         "http_version": "1.1",
         "method": "POST",
         "scheme": "http",
-        "path": "/parse",
-        "raw_path": b"/parse",
+        "path": path,
+        "raw_path": path.encode(),
         "query_string": b"",
         "root_path": "",
         "headers": [(b"content-type", b"multipart/form-data; boundary=XX"), *headers],
         "client": ("127.0.0.1", 50000),
         "server": ("127.0.0.1", 8000),
     }
+
+
+def drive(app, chunks, headers=(), path="/parse", host=(LOCAL_HOST,)):
+    """Feed a raw request to the app piece by piece: (status, body, bytes the app asked for)."""
+    pulled, sent = [], []
+    scope = upload_scope([*host, *headers], path)
     source = iter(chunks)
 
     async def receive():
@@ -344,7 +357,7 @@ def test_the_upload_is_on_disk_only_during_its_request(client, temp_root, monkey
 
 def test_an_unexpected_error_gives_no_details_and_leaves_no_file(config, monkeypatch):
     seen = spy_on_parse(monkeypatch, then=RuntimeError("internal secret"))
-    client = TestClient(create_app(config), raise_server_exceptions=False)
+    client = local_client(create_app(config), raise_server_exceptions=False)
     reply = send(client, "/parse", "rates.csv", samples.csv_bytes())
     assert reply.status_code == 500
     assert reply.json() == {"detail": "Internal error. See the server log."}
@@ -374,19 +387,20 @@ def test_file_names_are_cleaned(client, temp_root, monkeypatch, sent, cleaned):
 
 def test_the_parse_cache_is_off_so_nothing_is_stored(config, tmp_path):
     config.cache_dir = tmp_path / "cache"
-    client = TestClient(create_app(config))
+    client = local_client(create_app(config))
     assert send(client, "/parse", "rates.csv", samples.csv_bytes()).status_code == 200
     assert not (tmp_path / "cache").exists()
     assert config.cache_dir == tmp_path / "cache"  # the caller's settings are not changed
 
 
-def test_there_are_no_cors_headers(client):
-    headers = {"Origin": "https://example.com"}
+@pytest.mark.parametrize("origin, status", [("https://example.com", 403), (BASE_URL, 405)])
+def test_there_are_no_cors_headers(client, origin, status):
+    headers = {"Origin": origin}
     assert "access-control-allow-origin" not in client.get("/health", headers=headers).headers
     preflight = client.options(
         "/parse", headers={**headers, "Access-Control-Request-Method": "POST"}
     )
-    assert preflight.status_code == 405
+    assert preflight.status_code == status
     assert "access-control-allow-origin" not in preflight.headers
 
 
@@ -408,8 +422,11 @@ def test_extract_returns_the_same_json_as_the_command_line(
     command = ["extract", str(pdf), "--schema", "invoice", "--format", "json", "-c", str(settings)]
     cli = CliRunner().invoke(cli_app, command)
     assert cli.exit_code == 0, cli.output
-    assert reply.json() == json.loads(cli.stdout)
-    assert reply.json()["fields"] and reply.json()["needs_review"] == []
+    body, printed = reply.json(), json.loads(cli.stdout)
+    assert list(body) == [*printed, "warnings"]  # one added key, at the end
+    assert body.pop("warnings") == []
+    assert body == printed
+    assert body["fields"] and body["needs_review"] == []
 
 
 def test_extract_shows_the_length_guard_on_the_review_list(client, invoice_pdf, monkeypatch):
@@ -516,7 +533,7 @@ def test_heavy_requests_take_turns_and_health_still_answers(config, monkeypatch)
     monkeypatch.setattr(api_module, "parse", counted(real_parse))
     monkeypatch.setattr(api_module, "extract", counted(real_extract))
     replies = []
-    with TestClient(create_app(config)) as client:  # one event loop, like a real server
+    with local_client(create_app(config)) as client:  # one event loop, like a real server
         jobs = [
             lambda: send(client, "/parse", "a.csv", samples.csv_bytes()),
             lambda: send(client, "/parse", "b.csv", samples.csv_bytes()),

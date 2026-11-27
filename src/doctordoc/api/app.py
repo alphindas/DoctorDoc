@@ -2,23 +2,26 @@
 
 There is no login, and nothing is stored: each upload lives in a temporary folder until its
 request ends. /parse and /extract take turns (one lock for both), because only one heavy
-model should be in memory at a time; other requests wait for their turn, with no time limit.
-The lock belongs to one server process, so run a single worker.
+model should be in memory at a time. At most `api.max_waiting` others wait for their turn,
+with no time limit; the next one gets a 503. The lock and the count belong to one server
+process, so run a single worker.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import Callable
 from typing import Annotated, Any, Literal, TypeVar
 
 import httpx
-from fastapi import FastAPI, Form, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, FastAPI, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from doctordoc import __version__
+from doctordoc.api.guards import LOCAL_HOSTS, SameSiteOnly, WaitingLine
 from doctordoc.api.uploads import BodyLimit, saved_upload
 from doctordoc.config import Config, LLMConfig
 from doctordoc.extract import BUILTIN_SCHEMAS, LLMError, extract, list_models
@@ -29,15 +32,33 @@ from doctordoc.router import Router
 log = logging.getLogger("doctordoc.api")
 T = TypeVar("T")
 JSON = "application/json"
+MAX_NAMES_IN_WARNING = 10
 
 
-def create_app(config: Config | None = None) -> FastAPI:
-    """Build the API. The settings are the server's: a request cannot change them."""
+def create_app(config: Config | None = None, *, local_only: bool = True) -> FastAPI:
+    """Build the API. The settings are the server's: a request cannot change them.
+
+    `local_only=False` says that the server listens on an address other computers can reach.
+    Then any Host header is accepted, unless `api.allowed_hosts` lists the accepted ones.
+    """
     config = (config or Config()).model_copy(deep=True)
     config.cache_dir = None  # the parse cache would keep documents on disk: the API stores nothing
-    app = FastAPI(title="DoctorDoc", version=__version__)
+    docs = config.api.docs
+    app = FastAPI(
+        title="DoctorDoc",
+        version=__version__,
+        docs_url="/docs" if docs else None,
+        redoc_url="/redoc" if docs else None,
+        openapi_url="/openapi.json" if docs else None,
+    )
+    allowed = LOCAL_HOSTS | set(config.api.allowed_hosts)
+    any_host = not local_only and not config.api.allowed_hosts
     app.add_middleware(BodyLimit, max_file_mb=config.max_file_mb)
+    # Added last, so it runs first: a refused request is not looked at any further.
+    app.add_middleware(SameSiteOnly, allowed_hosts=None if any_host else allowed)
     heavy_lock = asyncio.Lock()
+    # the routes that wait for the lock: only a limited number of requests may be inside them
+    heavy = APIRouter(route_class=WaitingLine(config.api.max_waiting).route_class())
 
     async def take_turns(work: Callable[[], T]) -> T:
         """Run heavy work in a thread, one request at a time. Waiting uses no thread."""
@@ -60,7 +81,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     def engines() -> dict[str, Any]:
         return {"engines": Router(config).engine_report()}  # what `doctordoc engines` shows
 
-    @app.post("/parse")
+    @heavy.post("/parse")
     async def parse_file(
         file: UploadFile,
         format: Literal["json", "markdown"] = "json",
@@ -80,7 +101,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         ]
         return JSONResponse({"markdown": doc.to_markdown(), "decisions": decisions})
 
-    @app.post("/extract")
+    @heavy.post("/extract")
     async def extract_fields(
         file: UploadFile,
         schema_name: Annotated[str, Form(alias="schema")],
@@ -107,10 +128,38 @@ def create_app(config: Config | None = None) -> FastAPI:
                 raise HTTPException(503, _down_message(config.llm))
             else:
                 status = 502  # the model step failed; the report says why
-        # the same text as `doctordoc extract --format json`
-        return Response(result.to_report_json(), status_code=status, media_type=JSON)
+        return Response(_report_json(doc, result), status_code=status, media_type=JSON)
 
+    app.include_router(heavy)
     return app
+
+
+def _report_json(doc: Document, result: Any) -> str:
+    """What `doctordoc extract --format json` prints, plus a "warnings" list.
+
+    The list is added here, not in the report itself, so the command line's JSON is unchanged
+    (the command line prints its warnings separately).
+    """
+    report = result.to_report()
+    report["warnings"] = [*result.warnings, *_not_read(doc)]
+    return json.dumps(report, indent=2, ensure_ascii=False)
+
+
+def _not_read(doc: Document) -> list[str]:
+    """A warning about the files inside this one: extraction uses only its own pages."""
+    if not doc.children:
+        return []
+    count = len(doc.children)
+    names = ", ".join(child.source for child in doc.children[:MAX_NAMES_IN_WARNING])
+    if count > MAX_NAMES_IN_WARNING:
+        names += f" and {count - MAX_NAMES_IN_WARNING} more"
+    if doc.file_type == "zip":
+        return [
+            f"Ignored ZIP contents: {count} file(s) were not read ({names}). /extract does not "
+            "look inside a ZIP: send the files one at a time."
+        ]
+    note = " The email's own text, which lists their names, was used." if doc.pages else ""
+    return [f"Ignored email attachments: {count} file(s) were not read ({names}).{note}"]
 
 
 def _refuse_unreadable(doc: Document) -> None:

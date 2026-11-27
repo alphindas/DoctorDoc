@@ -280,6 +280,9 @@ def api(
     host: Annotated[str, typer.Option(help="Address to listen on.")] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Port to listen on.")] = 8000,
     config_path: ConfigOption = None,
+    no_docs: Annotated[
+        bool, typer.Option("--no-docs", help="Turn off /docs, /redoc and /openapi.json.")
+    ] = False,
 ) -> None:
     """Start the HTTP API. It has no login: keep it on this computer."""
     import importlib.util
@@ -296,14 +299,24 @@ def api(
 
     from doctordoc.api import create_app
 
-    if not _is_local(host):
+    config = _load_config(config_path)
+    if no_docs:
+        config.api.docs = False
+    local = _is_local(host)
+    if not local:
         err.print(
             f"[bold red]warning[/bold red] {escape(repr(host))} is not a local address, and the "
             "API has no login: anyone who can reach it can send files to be parsed and use your "
             "model. Use 127.0.0.1 unless something else controls who can connect.",
             soft_wrap=True,
         )
-    uvicorn.run(create_app(_load_config(config_path)), host=host, port=port)
+        if not config.api.allowed_hosts:
+            err.print(
+                "[bold red]warning[/bold red] Any Host header is now accepted. To limit it, "
+                "set api.allowed_hosts to the names people use to reach this server.",
+                soft_wrap=True,
+            )
+    uvicorn.run(create_app(config, local_only=local), host=host, port=port)
 
 
 def _is_local(host: str) -> bool:
