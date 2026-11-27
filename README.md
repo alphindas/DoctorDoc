@@ -92,11 +92,12 @@ demo see [docs/deploy-demo.md](docs/deploy-demo.md). The look is from
 
 The API uses the same parse and extract code as the command line. It has **no login**, so it is meant for programs
 on your own computer, and it works on **one heavy request at a time**. It is early: it was tested **only locally**,
-with FastAPI's `TestClient` and one smoke test with `curl` against a real server. It is **not load-tested**.
+with FastAPI's `TestClient`, smoke tests with `curl` against a real server, and one run of the `/docs` upload forms in
+Chromium. It is **not load-tested**.
 
 ```bash
 uv pip install -e ".[api]"       # add the ocr, docling and markitdown extras for more engines
-doctordoc api                    # http://127.0.0.1:8000  (--host, --port, --config my.yaml)
+doctordoc api                    # http://127.0.0.1:8000  (--host, --port, --config my.yaml, --no-docs)
 ```
 
 | Endpoint | What it does |
@@ -104,19 +105,50 @@ doctordoc api                    # http://127.0.0.1:8000  (--host, --port, --con
 | `GET /health` | status, version, and `ollama_reachable` (`null` if the server is set to an OpenAI-compatible model server) |
 | `GET /engines` | every engine with its license and whether it is installed: the data of `doctordoc engines` |
 | `POST /parse` | form field `file`. Query: `format=json` (default) or `markdown`; `explain=true` or `false` |
-| `POST /extract` | form fields `file` and `schema`: `invoice`, `receipt`, `drilling` or `form`. Returns the [extraction report](#extraction-output-format) |
+| `POST /extract` | form fields `file` and `schema`: `invoice`, `receipt`, `drilling` or `form`. Returns the [extraction report](#extraction-output-format) plus a `warnings` list |
 
 With `format=json`, `/parse` returns the Document as JSON, which always includes each file's router decision log
 (`decisions`). With `format=markdown` it returns Markdown text; add `explain=true` to get JSON with two keys,
 `markdown` and `decisions`.
 
-FastAPI's own `/docs` and `/redoc` pages are on too. Your browser loads their scripts (and, for `/redoc`, fonts)
-from public servers, so they are not fully local. The four endpoints do not need those pages.
+FastAPI's own `/docs` and `/redoc` pages (and `/openapi.json`) are on by default. Your browser loads the two pages'
+scripts (and, for `/redoc`, fonts) from public servers, so they are not fully local. `--no-docs` turns all three off,
+and so does `docs: false` in the settings below. The four endpoints do not need them. The upload forms on `/docs`
+("Try it out") pass the [cross-site checks](#cross-site-requests): in Chromium, `/parse` and `/extract` worked at
+both `127.0.0.1` and `localhost`.
+
+### Settings
+
+In your `--config` file (these are the defaults):
+
+```yaml
+api:
+  max_waiting: 4       # /parse and /extract requests that may wait while one works
+  docs: true           # serve /docs, /redoc and /openapi.json
+  allowed_hosts: []    # extra Host names to accept: names only, no port
+```
+
+Environment variables work too, for example `DOCTORDOC_API__MAX_WAITING=1`.
+
+### `warnings` in `/extract`
+
+`/extract` adds a `warnings` list to the report (empty if there is nothing to say). The command line's JSON has no such
+key: it prints its warnings separately. The list can say that:
+
+- the file extension was wrong;
+- a long document was split into several model calls (added only when extraction finishes);
+- a prompt may not have fitted the model's context window;
+- files inside a ZIP, or email attachments, were **not read** (up to 10 names are shown);
+- a file inside a ZIP or email was skipped, for example because of a size or count limit.
+
+Other warnings from parsing are passed on too.
 
 ### Examples (real output)
 
-The outputs below are real, from the smoke test on one machine (they are not saved in the repo). That test ran
-**without Docling**, with `llama3.2:3b` on Ollama 0.33.1. Run the commands from the repo folder.
+The outputs below are real, from smoke tests on one machine (they are not saved in the repo). Both tests ran
+**without Docling**, with `llama3.2:3b` on Ollama 0.33.1. The `/health` and `/parse` examples are from the first test;
+the `/extract`, warning and refusal examples are from a second one, after the cross-site checks, waiting limit and
+`warnings` were added. Run the commands from the repo folder.
 
 ```bash
 curl -s http://127.0.0.1:8000/health
@@ -160,7 +192,7 @@ With `&explain=true` on the same request, `decisions` had three entries. These a
 curl -s -F file=@examples/invoice_digital.pdf -F schema=invoice http://127.0.0.1:8000/extract
 ```
 
-A shortened excerpt: it keeps 4 of the 20 entries in `fields`; everything else is as returned. The call took 21 s.
+A shortened excerpt: it keeps 4 of the 20 entries in `fields`; everything else is as returned. The call took 25 s.
 
 ```json
 {
@@ -178,16 +210,40 @@ A shortened excerpt: it keeps 4 of the 20 entries in `fields`; everything else i
   ],
   "needs_review": ["currency"],
   "validation_issues": [],
-  "error": null
+  "error": null,
+  "warnings": []
 }
 ```
 
 The invoice shows no subtotal, yet `subtotal` is filled and **not** flagged. This differs from the
 [saved command-line run](#extraction-output-format) on the same file, where Docling was installed: there `total` was
-empty. **The engine that reads the file can change the extracted fields.** In the smoke test, `doctordoc extract
---format json` in the same setup gave the same report as `/extract`.
+empty. **The engine that reads the file can change the extracted fields.** In the second smoke test,
+`doctordoc extract --format json` in the same setup (with `COLUMNS=1000000`, see
+[Known limitations](#known-limitations)) gave the same report as `/extract`, apart from the added `warnings`.
 
-From a second server in the same test, started with a 1 MB limit (`DOCTORDOC_MAX_FILE_MB=1`) and a model server
+The `warnings` from two other `/extract` requests: a copy of that PDF named `invoice.docx` (HTTP 200), and a synthetic
+email with two attachments (HTTP 200):
+
+```json
+["Extension '.docx' says docx, but the content is pdf. Treating it as pdf."]
+["Ignored email attachments: 2 file(s) were not read (invoice.pdf, rates.csv). The email's own text, which lists their names, was used."]
+```
+
+A request with `-H 'Origin: http://evil.example'` got HTTP 403, and one with `-H 'Host: evil.example'` got HTTP 403:
+
+```json
+{"detail":"Refused: the Origin header does not match the Host header, so the request may come from another web site."}
+{"detail":"Refused: the server does not accept this Host header. Use localhost, 127.0.0.1 or ::1, or add the name to api.allowed_hosts in the server's settings."}
+```
+
+With the default limit, five `/extract` requests sent at once all got HTTP 200, finishing between 10 s and 44 s. While
+they were in progress, a sixth request got HTTP 503 with the header `retry-after: 30`:
+
+```json
+{"detail":"The server is busy: 5 /parse or /extract requests are already in progress or waiting (api.max_waiting is 4). Try again later."}
+```
+
+From a second server in the first test, started with a 1 MB limit (`DOCTORDOC_MAX_FILE_MB=1`) and a model server
 address with nothing on it. A 50 MB upload got HTTP 413, and an `/extract` request got HTTP 503:
 
 ```json
@@ -201,11 +257,13 @@ address with nothing on it. A 50 MB upload got HTTP 413, and an `/extract` reque
 |---|---|
 | 200 | done. A file with warnings, or a ZIP with a bad file inside, is still 200: read `warnings` and each child's `error` |
 | 400 | the request body is not valid form data |
+| 403 | the `Host` header is not accepted, or the `Origin` header does not match it ([cross-site requests](#cross-site-requests)) |
 | 413 | the upload is over `max_file_mb` |
 | 415 | the file is unsupported or broken: empty, password-protected, corrupt, unknown type, or no engine could read it (also when none that could is installed, or all failed or timed out) |
 | 422 | unknown schema, or a missing or wrong parameter. Also `/extract` on a readable file with no text: then the body is the extraction report, with `error` set |
 | 502 | `/extract`: the model step failed (for example model not pulled, time limit, answer cut off, prompt too long). The body is the extraction report, with `error` set |
-| 503 | `/extract`: the model server cannot be reached. `/parse` still works |
+| 503 | `/parse` or `/extract`: too many requests are already waiting. This one has a `Retry-After` header |
+| 503 | `/extract`: the model server cannot be reached (no `Retry-After`). `/parse` still works |
 | 500 | unexpected error. The reply has no details; the server log does |
 
 Other errors have a body with one key, `detail`.
@@ -214,9 +272,7 @@ Other errors have a body with one key, `detail`.
 
 - **No login, no HTTPS.** By default it listens on `127.0.0.1` only. `--host` with any other address prints a warning:
   anyone who can reach it can use it.
-- **No CORS headers**, so a web page from another site cannot read the replies in a normal browser. The server does
-  **not** stop such a page from *sending* a file to `127.0.0.1:8000` and making your computer work on it, and it does
-  not check the `Host` or `Origin` header. Some browsers may block such requests themselves (not tested).
+- **No CORS headers**, so a web page from another site cannot read the replies in a normal browser.
 - **No storage.** Each upload is written to its own temporary folder, which is deleted when the request ends, also
   after an error. The parse cache (`cache_dir`) is switched off even if your settings turn it on. If the process is
   force-killed or the machine loses power, temporary files can be left behind.
@@ -225,9 +281,15 @@ Other errors have a body with one key, `detail`.
   The cap is on the upload, not on what it expands to: ZIP and email contents have their own limits, but a DOCX, XLSX
   or PPTX is compressed and can need far more memory than its size.
 - **One heavy request at a time.** `/parse` and `/extract` share one lock, which also covers the model call, because
-  only one heavy model should be in memory. If requests arrive together, one works and the **others wait**; they are
-  not refused. There is no limit on how many wait or for how long, and each waiting upload takes disk space.
-  `/health` and `/engines` do not wait. Run one server process: each process has its own lock.
+  only one heavy model should be in memory. If requests arrive together, one works and the **others wait**.
+  `/health` and `/engines` do not wait. Run one server process: each process has its own lock and count.
+  - **Only a few may wait:** `api.max_waiting`, 4 by default, so five of these requests can be in the server.
+    The next gets HTTP 503 **before its upload is read or written to disk**. `Retry-After: 30` is a fixed hint, not
+    an estimate of when there will be room. `max_waiting: 0` means that nothing waits.
+  - A request takes its place **as soon as it arrives**, so one that is still uploading counts. The API puts no time
+    limit on an upload, so a few very slow uploads can fill every place.
+  - There is no time limit on the wait, and each waiting upload takes disk space. A client that disconnects while
+    waiting is not meant to free its place before its turn (not tested).
   - The lock does not control Ollama, which can keep its model in memory after replying, or other programs using
     your GPU. An engine that hit its time limit can also keep running after its request ends.
   - Engine models are loaded again for each request and freed afterwards.
@@ -237,15 +299,34 @@ Other errors have a body with one key, `detail`.
   fallback is off unless the server's settings turn it on.
 - **Built-in schemas only.** The command line also takes your own `module:Class`; the API refuses it, because it would
   let any caller make the server import Python code.
-- **`/extract` reads only the file's own pages**, like the command line: it ignores files inside a ZIP, and email
-  attachments, without saying so. A plain ZIP gets 422.
-- **`/extract` does not return warnings** (for example "wrong file extension" or "long document"); the command line
-  prints them separately. The length guard is still visible: `document` in `needs_review`.
+- **`/extract` reads only the file's own pages**, like the command line: it does not read files inside a ZIP, or the
+  contents of email attachments. The API says so in `warnings`; the command line does not. An email's own text lists
+  the attachment names, so the model sees the names. A plain ZIP gets 422.
+
+### Cross-site requests
+
+A web page you visit can make your browser send requests to a server on your own computer. Two checks refuse them with
+HTTP 403, before the upload is read:
+
+- **`Origin`:** if a request has this header, its host and port must be the same as in the `Host` header. A missing
+  port means 80 for `http` and 443 for `https`; `http` and `https` themselves are not compared. `Origin: null` is
+  refused. Browsers send `Origin` with a `POST` to another site. A request **without** `Origin` (`curl`, most
+  scripts) is accepted.
+- **`Host`:** only `localhost`, `127.0.0.1` and `::1` are accepted, with any port. This stops a web site that points
+  its own name at your computer (DNS rebinding). `api.allowed_hosts` adds names to these three. You need it for any
+  other name or address, including another local one such as `127.0.0.2`.
+- **A non-local `--host` without `allowed_hosts` accepts any `Host`** (the server prints a warning). The `Origin` check
+  stays, but a DNS rebinding page passes it, because its `Origin` and `Host` agree. Set `allowed_hosts`. A proxy in
+  front of the server must pass the browser's `Host` on unchanged (not tested).
+
+**This is not a login.** The checks only stop web browsers from being used against the server. Any other program, on
+your computer or on any computer that can reach the server, can send whatever headers it likes.
 
 ## Extraction output format
 
 `doctordoc extract FILE --format json` prints this, the Extract tab downloads the same thing, and
-[`POST /extract`](#http-api) returns it (on the command line, [long lines can break the JSON](#known-limitations)).
+[`POST /extract`](#http-api) returns it with one more key, [`warnings`](#warnings-in-extract) (on the command line,
+[long lines can break the JSON](#known-limitations)).
 One entry per field, then the review list and the problems:
 
 This is a shortened excerpt of **real output, not tuned**, from `examples/invoice_digital.pdf` with `llama3.2:3b`.
@@ -521,7 +602,8 @@ the fields. Results:
 - **Field accuracy 1.00 is a ceiling:** the fields are synthetic and easy, so this score cannot show how the model
   does on harder documents. On `examples/invoice_digital.pdf`, a real run put the invoice's total under `subtotal`
   (not flagged) and left `total` empty (flagged), the same in 4 runs
-  ([saved output of the first run](docs/examples/extract_invoice_digital.json)).
+  ([saved output of the first run](docs/examples/extract_invoice_digital.json)). Without Docling the same invoice gave
+  `total` 40000.0 (see the [API examples](#examples-real-output)), still with `subtotal` wrongly filled (not flagged).
 - This run did **not** repeat the router against single engines comparison.
 
 ### 2. Rotation fix, before and after
