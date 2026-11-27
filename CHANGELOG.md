@@ -61,6 +61,7 @@ history and the [README](README.md), which has the details and the limits.
 - Field extraction has limits: by default 4096 answer tokens, 300 s per call, 600 s per document and 1 retry (before:
   no answer limit, 600 s and 2 retries).
 - A PDF page now counts as mixed when pictures cover 10% of it (before: 35%), so smaller pictures with text get OCR.
+- ONNX Runtime's telemetry is off by default (`ORT_DISABLE_TELEMETRY=1`). A value you set yourself, such as `0`, wins.
 
 ### Fixed
 

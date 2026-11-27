@@ -113,15 +113,34 @@ from Python gives no warning, and the warning does not change which engines run.
   `cache_dir: null` in the config file also works, even with the variable set. **An empty value does not turn it
   off:** with `DOCTORDOC_CACHE_DIR=` or `cache_dir: ""`, the cache files are written into the working folder. Turning
   the cache off does not delete old files.
-- **Not covered by the above:** files you ask for (`--out`, downloads), and whatever a model server or cloud server
-  keeps of what it receives. Other software can write its own files: with the cache off, ONNX Runtime 1.32.0 (used by
-  RapidOCR) still wrote a device ID and a small database of records about the machine, in `~/.cache/Microsoft` and the
-  temporary folder. No document name or text was found in them as plain text. **Whether it sends these records
-  anywhere was not checked.**
+- **Not covered by the above:** files you ask for (`--out`, downloads), whatever a model server or cloud server keeps
+  of what it receives, and files that other software writes (see [ONNX Runtime telemetry](#onnx-runtime-telemetry)).
 
 (Seen during development with synthetic files and the native readers, `pdf_text`, RapidOCR and Tesseract, by looking
 for new files in the home and temporary folders afterwards; no result file saved. Docling, MarkItDown and PaddleOCR-VL
 were not checked.)
+
+### ONNX Runtime telemetry
+
+RapidOCR runs on ONNX Runtime. **ONNX Runtime may collect telemetry in official builds.** The `Privacy.md` file in its
+package says official builds have it on by default and send it to Microsoft. **DoctorDoc turns it off by default:**
+`import doctordoc`, which the command line, the web UI and the HTTP API all do, sets `ORT_DISABLE_TELEMETRY=1` unless
+you have set that variable yourself.
+
+- **To turn it back on,** set `ORT_DISABLE_TELEMETRY=0` before you start DoctorDoc. Your value is not overwritten. In
+  our test, `1` and `true` turned telemetry off; `0`, `false` and an empty value left it on.
+- The variable must be set before ONNX Runtime starts. **If your own program imports `onnxruntime` before `doctordoc`,
+  telemetry stays on:** import `doctordoc` first, or set the variable yourself.
+- It is set for the whole process and for programs that process starts, so other code there that uses ONNX Runtime is
+  affected too.
+- **What was verified is only that the telemetry files stop being created:** a device ID, a database that queues
+  records, and a small `.ses` file in the temporary folder. **What is sent, or whether anything is sent, was not
+  verified.** This is not a promise that no data leaves your machine.
+- With telemetry on, the queued records described the machine; no document name or text was found in them as plain
+  text. DoctorDoc does not delete files made earlier. On Linux, look in `~/.cache/Microsoft/DeveloperTools/`.
+
+(Seen during development on Linux with ONNX Runtime 1.32.0 and RapidOCR, with networking off, no result file saved.
+Windows and macOS were not tested. The same `Privacy.md` says an older Windows telemetry method ignores this variable.)
 
 ## How it works
 
