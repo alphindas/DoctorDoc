@@ -5,10 +5,15 @@
 **One door for any document: it works out what the file is, picks the best engine for each page, and returns clean Markdown/JSON plus fields you can trace back to the source text.**
 
 > Status: early (v0.1). Parsing + router, field extraction, a web UI, a local [HTTP API](#http-api) (no login) and a
-> synthetic benchmark work. The Docker image is not built yet. Apache-2.0, fully local by default.
+> synthetic benchmark work. The Docker image is not built yet. Apache-2.0.
 > A [GitHub Actions workflow](.github/workflows/ci.yml) is set up to run ruff and the tests. It does not install Docling
 > or MarkItDown (the tests that need them are skipped), and it runs no benchmarks and no Ollama model. It also checks that
 > an install with no extras can parse the example invoice.
+>
+> **Local-first:** by default, DoctorDoc runs on your computer and keeps your documents there. The
+> [cloud engine](#configuration) is off by default. The Extract step sends document text to the model server in
+> `llm.base_url`: by default Ollama on your computer, but you can change it.
+> [ONNX Runtime telemetry](#onnx-runtime-telemetry) is turned off by default.
 
 > **Key results and weak spots**
 > - Router text **0.99**, best single engine 0.51 (34 readable files, before the rotation fix): mostly breadth. Per type it mostly ties; it loses on mixed pages ([comparison](#router-against-single-engines)).
@@ -157,7 +162,7 @@ flowchart LR
     N --> Q
     Q -- yes --> DOC[One Document:<br/>pages, blocks, tables, decision log]
     DOC --> MD[Markdown / JSON]
-    DOC --> EX[Extract fields with a local LLM]
+    DOC --> EX[Extract fields with an LLM<br/>local Ollama by default]
     EX --> GR[Grounding + validation<br/>confidence + needs_review]
 ```
 
@@ -780,7 +785,7 @@ Honest list, from testing on synthetic documents so far:
 - **`mixed: []` does not stop OCR on mixed pages.** For these pages the router also runs the `scanned` chain,
   including the cloud engine if that chain has it and cloud is on.
 - OCR engines sometimes glue words together across wide gaps (seen during development, no result file saved). Grounding tolerates this, but the Markdown shows it.
-- Field extraction uses a small local model (`llama3.2:3b` by default) and has only been measured on small synthetic sets (invoices and drilling reports).
+- By default, field extraction uses a small model (`llama3.2:3b` in Ollama on your computer). It has only been measured on small synthetic sets (invoices and drilling reports).
 - `.msg` (Outlook) attachment reading is not tested: this repo has no `.msg` sample file and no test for it.
 - English OCR only for now (`ocr_languages: eng`).
 - No handwriting, no formulas, and no figure understanding.
