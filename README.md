@@ -7,7 +7,8 @@
 > Status: early (v0.1). Parsing + router, field extraction, a web UI, a local [HTTP API](#http-api) (no login) and a
 > synthetic benchmark work. The Docker image is not built yet. Apache-2.0, fully local by default.
 > A [GitHub Actions workflow](.github/workflows/ci.yml) is set up to run ruff and the tests. It does not install Docling
-> or MarkItDown (the tests that need them are skipped), and it runs no benchmarks and no Ollama model.
+> or MarkItDown (the tests that need them are skipped), and it runs no benchmarks and no Ollama model. It also checks that
+> an install with no extras can parse the example invoice.
 
 > **Key results and weak spots**
 > - Router text **0.99**, best single engine 0.51 (34 readable files, before the rotation fix): mostly breadth. Per type it mostly ties; it loses on mixed pages ([comparison](#router-against-single-engines)).
@@ -21,7 +22,7 @@
 ```bash
 git clone https://github.com/alphindas/DoctorDoc.git && cd DoctorDoc
 uv venv && source .venv/bin/activate
-uv pip install -e ".[ocr,docling,markitdown]"   # keep ocr: without extras nothing parses (see Known limitations)
+uv pip install -e ".[ocr,docling,markitdown]"   # without ocr, scanned pages and images need the Tesseract program
 
 doctordoc parse report.pdf --explain            # Markdown + the router's decision log
 doctordoc triage report.pdf                     # what kind is each page?
@@ -42,6 +43,20 @@ result = extract(doc, "invoice")  # or your own Pydantic model
 print(result.needs_review)  # fields a human should check
 print(result.field("total").source)  # page + exact text span it came from
 ```
+
+## Configuration
+
+Every setting has a default. There are two ways to change one:
+
+- **A YAML file**, passed with `--config my.yaml`. The command line does not pick up a file on its own.
+  [doctordoc.example.yaml](doctordoc.example.yaml) is a starting point.
+- **An environment variable:** `DOCTORDOC_` and the setting's name, with `__` between a group and a setting in it, for
+  example `DOCTORDOC_MAX_FILE_MB=50` or `DOCTORDOC_LLM__MODEL=llama3.2:3b`.
+
+**For every setting, a value in your config file wins over the environment variable.** A variable is used only for
+what the file does not set. So if you copy the example file, variables for the settings it lists are ignored: remove
+those lines to use the variables. Command-line options that change a setting, such as `--model` or `--no-docs`, are
+applied after both.
 
 ## How it works
 
@@ -128,9 +143,8 @@ api:
   allowed_hosts: []    # extra Host names to accept: names only, no port
 ```
 
-Environment variables work too, for example `DOCTORDOC_API__MAX_WAITING=1`, but **a value in your `--config` file wins
-over the variable**. So if the file sets `max_waiting`, as the block above does, the variable is ignored: remove that
-line from the file to use the variable.
+Environment variables work too, for example `DOCTORDOC_API__MAX_WAITING=1`, if your file does not set the same thing
+([which one wins](#configuration)).
 
 ### `warnings` in `/extract`
 
@@ -220,8 +234,9 @@ A shortened excerpt: it keeps 4 of the 20 entries in `fields`; everything else i
 The invoice shows no subtotal, yet `subtotal` is filled and **not** flagged. This differs from the
 [saved command-line run](#extraction-output-format) on the same file, where Docling was installed: there `total` was
 empty. **The engine that reads the file can change the extracted fields.** In the second smoke test,
-`doctordoc extract --format json` in the same setup (with `COLUMNS=1000000`, see
-[Known limitations](#known-limitations)) gave the same report as `/extract`, apart from the added `warnings`.
+`doctordoc extract --format json` in the same setup gave the same report as `/extract`, apart from the added
+`warnings`. (That run used `COLUMNS=1000000`. It was made before the command line's JSON printing was fixed, when long
+lines could break the JSON.)
 
 The `warnings` from two other `/extract` requests: a copy of that PDF named `invoice.docx` (HTTP 200), and a synthetic
 email with two attachments (HTTP 200):
@@ -327,8 +342,7 @@ your computer or on any computer that can reach the server, can send whatever he
 ## Extraction output format
 
 `doctordoc extract FILE --format json` prints this, the Extract tab downloads the same thing, and
-[`POST /extract`](#http-api) returns it with one more key, [`warnings`](#warnings-in-extract) (on the command line,
-[long lines can break the JSON](#known-limitations)).
+[`POST /extract`](#http-api) returns it with one more key, [`warnings`](#warnings-in-extract).
 One entry per field, then the review list and the problems:
 
 This is a shortened excerpt of **real output, not tuned**, from `examples/invoice_digital.pdf` with `llama3.2:3b`.
@@ -668,14 +682,10 @@ Honest list, from testing on synthetic documents so far:
   - **After the reply:** Ollama's `prompt_eval_count` and `eval_count` are logged and kept in `result.llm_calls` (not in the JSON report). If the prompt count reaches the safe limit, looks like a cut (about half of `num_ctx`), or prompt plus answer is more than `num_ctx`, there is a warning, every field is marked for review, and `needs_review` also lists `document` (a `prompt_length` entry in `validation_issues` says why).
   - **Not covered:** the estimate is not the model's tokenizer. It can refuse text that would fit (for example long Chinese, Japanese or Hindi text) and can guess too low (for example Malayalam or tables full of numbers). The check after the reply is the backstop; its cut pattern was seen with this one Ollama version and model, and it needs the server to report the counts. OpenAI-compatible servers are not guarded.
 - **Merging the pieces of a long document has limits.** Each piece is a separate model call, and a split document gets a warning. Every list item from every piece is kept, including repeated ones: two identical rig day-rate lines stay two. The risk is the other way: if the model lists a repeated header or total row as an item more than once, it can be counted twice. The invoice and receipt rules flag this only if a subtotal was extracted and the lines do not add up to it; the drilling and form schemas have no rule that checks for an extra item. For a single field, the first non-empty value is still kept. If a later piece gives a different non-empty value, the field goes to `needs_review` and `validation_issues` gets a `merge_conflict` error that shows both values. Its confidence is not lowered for this, and an empty later value does not count. The comparison is exact, so a small difference in spelling or capitals is flagged too. Different values for the same entry in two lists are not compared: both entries are kept. (Checked with a scripted model during development, no result file saved.)
-- **The command line can print broken JSON.** `doctordoc parse -f json` and `doctordoc extract --format json` wrap long
-  lines to the output width, which can put a line break inside a text value. Seen with `parse` on
-  `examples/invoice_digital.pdf`, and with `extract` (scripted model) when the length guard's long message was in the
-  report (during development, no result file saved). Setting `COLUMNS=1000000` avoided it in both cases, and so did
-  `parse --out FOLDER`. The HTTP API does not wrap its JSON.
-- **An install with no extras cannot parse.** The code imports NumPy, which is not a core dependency, so parsing stops
-  with `ModuleNotFoundError` (seen during development, no result file saved). The `api`, `ocr` and `ui` extras bring
-  NumPy in.
+- **Markdown that the command line prints is not exact.** `parse` without `--out` still wraps long lines, even into a
+  pipe, and turns text such as `:smile:` into an emoji. For the exact text use `parse --out FOLDER` (seen during
+  development, no result file saved). JSON had the same fault and is **fixed**: `parse -f json` and
+  `extract --format json` now print it unchanged. For a folder with several files, `parse -f json` prints one JSON list.
 - OCR engines sometimes glue words together across wide gaps (seen during development, no result file saved). Grounding tolerates this, but the Markdown shows it.
 - Field extraction uses a small local model (`llama3.2:3b` by default) and has only been measured on small synthetic sets (invoices and drilling reports).
 - `.msg` (Outlook) attachment reading is not tested: this repo has no `.msg` sample file and no test for it.
