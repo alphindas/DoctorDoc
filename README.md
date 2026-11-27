@@ -128,7 +128,9 @@ api:
   allowed_hosts: []    # extra Host names to accept: names only, no port
 ```
 
-Environment variables work too, for example `DOCTORDOC_API__MAX_WAITING=1`.
+Environment variables work too, for example `DOCTORDOC_API__MAX_WAITING=1`, but **a value in your `--config` file wins
+over the variable**. So if the file sets `max_waiting`, as the block above does, the variable is ignored: remove that
+line from the file to use the variable.
 
 ### `warnings` in `/extract`
 
