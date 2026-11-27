@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      # The ruff version is fixed so that a new ruff release cannot break CI by itself.
+      - run: uvx ruff@0.17.6 check .
+      - run: uvx ruff@0.17.6 format --check .
+
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      # Without it nothing fails, but the real Tesseract tests are skipped.
+      - name: Install Tesseract
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd
+      # No "docling" extra: on Linux it pulls PyTorch with the NVIDIA libraries.
+      # Its tests, and the "markitdown" one, skip themselves when the package is missing.
+      # No Ollama and no benchmarks: the tests use a scripted model.
+      - run: uv venv --python 3.12
+      - run: uv pip install -e ".[dev,ui,ocr]"
+      - run: .venv/bin/python -m pytest -q -rs
