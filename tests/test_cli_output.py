@@ -166,3 +166,100 @@ def test_the_decision_log_shows_the_hint_whole(monkeypatch, tmp_path, invoice_pd
     path.write_bytes(invoice_pdf)
     result = runner.invoke(cli.app, ["parse", str(path), "--explain", "--no-gpu"])
     assert result.exit_code == 0 and 'pip install "doctordoc[docling]"' in result.output
+
+
+# ---------------------------------------------------------------------------- exact Markdown
+
+HINDI = "नमस्ते दुनिया, यह एक परीक्षण है"
+# a very long line, things Rich rewrites, a raw terminal code (click would strip it), a tab
+MARKDOWN_TEXT = f"{'word ' * 2000}:smile: [red]x[/red] {HINDI} \x1b[31mred\x1b[0m\ttab end"
+
+LOCALES = {
+    "utf-8": {"PYTHONIOENCODING": "utf-8"},
+    "ascii C locale": {"LC_ALL": "C", "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0"},
+    "latin-1": {"PYTHONIOENCODING": "latin-1"},
+    "cp1252": {"PYTHONIOENCODING": "cp1252"},
+    "ascii, strict": {"PYTHONIOENCODING": "ascii:strict"},
+}
+
+
+def run_bytes(arguments, locale=None, **kwargs):
+    """`doctordoc ...` as a separate program; stdout and stderr are the raw bytes."""
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONIOENCODING", "LANG", "LC_ALL")}
+    env.update({"COLUMNS": "20", "FORCE_COLOR": "1", **(locale or LOCALES["utf-8"])})
+    kwargs.setdefault("stdout", subprocess.PIPE)
+    command = [sys.executable, "-m", "doctordoc.cli", *map(str, arguments)]
+    return subprocess.run(
+        command, env=env, stderr=subprocess.PIPE, timeout=120, check=False, **kwargs
+    )
+
+
+@pytest.fixture
+def markdown_source(tmp_path, settings):
+    """An input file, and the bytes that `--out` writes for it."""
+    path = tmp_path / "odd.txt"
+    path.write_text(MARKDOWN_TEXT + "\n\nsecond paragraph :smile:\n", encoding="utf-8")
+    run = run_bytes(["parse", path, "-o", tmp_path / "out", "-c", settings])
+    assert run.returncode == 0, run.stderr
+    written = (tmp_path / "out" / "odd.txt.md").read_bytes()
+    for part in (":smile:", "[red]x[/red]", HINDI, "\x1b[31mred", "word " * 2000):
+        assert part.encode() in written  # the --out file itself holds the text unchanged
+    return path, written
+
+
+@pytest.mark.parametrize("locale", LOCALES.values(), ids=LOCALES.keys())
+def test_markdown_on_stdout_is_byte_for_byte_the_out_file(markdown_source, settings, locale):
+    path, written = markdown_source
+    run = run_bytes(["parse", path, "-c", settings], locale)
+    assert run.returncode == 0, run.stderr
+    assert run.stdout == written
+
+
+def test_markdown_redirected_to_a_file_is_byte_for_byte_too(markdown_source, settings, tmp_path):
+    path, written = markdown_source
+    target = tmp_path / "redirected.md"
+    with target.open("wb") as handle:
+        assert run_bytes(["parse", path, "-c", settings], stdout=handle).returncode == 0
+    assert target.read_bytes() == written
+
+
+def test_explain_goes_to_stderr_and_leaves_the_markdown_exact(markdown_source, settings):
+    path, written = markdown_source
+    run = run_bytes(["parse", path, "--explain", "-c", settings])
+    assert run.stdout == written
+    assert b"Router decisions" in run.stderr
+
+
+@pytest.mark.parametrize("locale", ["utf-8", "latin-1"])
+def test_a_folder_prints_each_document_exactly_after_its_path(tmp_path, settings, locale):
+    folder = tmp_path / f"in {'long-folder-name-' * 6}:smile:"
+    folder.mkdir()
+    (folder / "a.txt").write_text(MARKDOWN_TEXT, encoding="utf-8")
+    (folder / "b [red].txt").write_text(HINDI, encoding="utf-8")
+    assert run_bytes(["parse", folder, "-o", tmp_path / "out", "-c", settings]).returncode == 0
+    expected = b"".join(
+        f"\n===== {folder / name} =====\n".encode() + (tmp_path / "out" / f"{name}.md").read_bytes()
+        for name in ("a.txt", "b [red].txt")
+    )
+    run = run_bytes(["parse", folder, "-c", settings], LOCALES[locale])
+    assert run.returncode == 0, run.stderr
+    assert run.stdout == expected
+
+
+def test_a_reader_that_stops_early_gets_no_traceback(tmp_path, settings):
+    path = tmp_path / "big.txt"
+    path.write_text("a line of words\n\n" * 40_000)  # far more than a pipe holds
+    command = [sys.executable, "-m", "doctordoc.cli", "parse", str(path), "-c", settings]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    assert process.stdout.read(10) == b"a line of "
+    process.stdout.close()  # like `| head`
+    errors = process.stderr.read()
+    process.wait(60)
+    assert b"Traceback" not in errors and b"BrokenPipe" not in errors, errors
+
+
+@pytest.mark.parametrize("separator", ["\n", "\r\n"])
+def test_line_endings_follow_the_system_as_the_out_file_does(monkeypatch, capsysbinary, separator):
+    monkeypatch.setattr(cli.os, "linesep", separator)  # "\r\n" is what Windows uses
+    cli._print_markdown("one\ntwo\n")
+    assert capsysbinary.readouterr().out == f"one{separator}two{separator}".encode()

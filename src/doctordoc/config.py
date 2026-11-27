@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Which engines to try, in order, for each kind of PDF page.
@@ -159,6 +160,14 @@ class Config(BaseSettings):
     intake: IntakeLimits = Field(default_factory=IntakeLimits)
     max_file_mb: float = 200.0
     cache_dir: Path | None = None  # set it to keep parsed results on disk, keyed by file hash
+
+    @field_validator("page_chains", "timeouts")
+    @classmethod
+    def _over_the_defaults(cls, given: dict, info: ValidationInfo) -> dict:
+        """A file or variable changes only the entries it names; the others keep their default.
+        An empty list is an entry like any other: no engines for that kind of page."""
+        defaults = DEFAULT_PAGE_CHAINS if info.field_name == "page_chains" else DEFAULT_TIMEOUTS
+        return {**deepcopy(defaults), **given}
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> Config:
