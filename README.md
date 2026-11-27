@@ -40,8 +40,10 @@ included, reach your terminal unchanged, as with `cat`.
 You can give `parse` a folder (its subfolders are read too). As Markdown, each document of a folder with several files
 follows a `===== path =====` line. With `-f json`, a folder with several files, or none, prints **one JSON list** in path
 order, and the `===== path =====` lines go to stderr. A folder with one file prints one object, like a single file. With
-`--out FOLDER`, each output file is named after its input's file name only, so two inputs with the same name in
-different subfolders write to the same file and **the first result is lost**.
+`--out FOLDER`, each output file is named after its input (`report.txt.md`). When inputs would share a name (also if
+only capitals differ), their folders are put in front (`a_report.txt.md`), then a number if that is still taken, so no
+result overwrites another. Each input and its output file are printed. Files already in `FOLDER`, for example from an
+earlier run, are still overwritten.
 
 ```python
 from doctordoc import parse
@@ -68,11 +70,26 @@ what the file does not set. So if you copy the example file, variables for the s
 those lines to use the variables. Command-line options that change a setting, such as `--model` or `--no-docs`, are
 applied after both.
 
-**`page_chains` and `timeouts` are merged with the defaults**, so name only the entries you want to change, in a file
-or in a variable such as `DOCTORDOC_PAGE_CHAINS__DIGITAL='["pdf_text"]'`. An entry you leave out keeps its default.
-To use no engines for a page kind, write an empty list, for example `scanned: []`. The default chains end with
-`cloud_vlm`, which runs only if `cloud.enabled` is true: **with cloud on, a page kind you leave out can be sent to the
-cloud server**. `file_chains` is not merged ([limits](#known-limitations)).
+**`page_chains`, `file_chains` and `timeouts` are merged with the defaults**, so name only the entries you want to
+change, in a file or in a variable such as `DOCTORDOC_PAGE_CHAINS__DIGITAL='["pdf_text"]'`. An entry you leave out
+keeps its default. To use no engines for a page kind or file type, write an empty list, for example `scanned: []`.
+The default chains for scanned and garbled pages and for images end with `cloud_vlm`, which runs only if
+`cloud.enabled` is true: **with cloud on, a page kind or file type you leave out can be sent to the cloud server**.
+
+**The cloud warning.** When the cloud engine is on, `parse`, `extract`, `ui` and the HTTP API log one warning at
+startup. It lists the page kinds and file types whose pages the chains could send, and how to prevent it. Using
+`parse()` from Python gives no warning, and the warning does not change which engines run.
+
+- `cloud.enabled: false` stops all of it. To stop it for one entry, take `cloud_vlm` out of that chain. `[]` also
+  works, except for `mixed` (below), but then no engine reads that kind of page or file, not even a local one.
+- The router never gives the cloud engine a digital PDF page or a file that is not a PDF or an image: the engine
+  refuses them. (Compare engines, below, is different.)
+- **Mixed pages also use the `scanned` chain**, so `mixed: []` alone does not keep them off the cloud: take
+  `cloud_vlm` out of the `scanned` chain too.
+- **An empty `cloud.api_key` does not stop pages being sent.** The page image is sent without a key, whether or not the
+  server then accepts it. (The web UI's sidebar says the cloud engine is skipped without a key. That is wrong.)
+- In the web UI, with "Local only" switched off, **Compare engines** runs the cloud engine on a PDF or image whatever
+  the chains say.
 
 ## How it works
 
@@ -698,17 +715,14 @@ Honest list, from testing on synthetic documents so far:
   - **After the reply:** Ollama's `prompt_eval_count` and `eval_count` are logged and kept in `result.llm_calls` (not in the JSON report). If the prompt count reaches the safe limit, looks like a cut (about half of `num_ctx`), or prompt plus answer is more than `num_ctx`, there is a warning, every field is marked for review, and `needs_review` also lists `document` (a `prompt_length` entry in `validation_issues` says why).
   - **Not covered:** the estimate is not the model's tokenizer. It can refuse text that would fit (for example long Chinese, Japanese or Hindi text) and can guess too low (for example Malayalam or tables full of numbers). The check after the reply is the backstop; its cut pattern was seen with this one Ollama version and model, and it needs the server to report the counts. OpenAI-compatible servers are not guarded.
 - **Merging the pieces of a long document has limits.** Each piece is a separate model call, and a split document gets a warning. Every list item from every piece is kept, including repeated ones: two identical rig day-rate lines stay two. The risk is the other way: if the model lists a repeated header or total row as an item more than once, it can be counted twice. The invoice and receipt rules flag this only if a subtotal was extracted and the lines do not add up to it; the drilling and form schemas have no rule that checks for an extra item. For a single field, the first non-empty value is still kept. If a later piece gives a different non-empty value, the field goes to `needs_review` and `validation_issues` gets a `merge_conflict` error that shows both values. Its confidence is not lowered for this, and an empty later value does not count. The comparison is exact, so a small difference in spelling or capitals is flagged too. Different values for the same entry in two lists are not compared: both entries are kept. (Checked with a scripted model during development, no result file saved.)
-- **Some command-line output fails in locales that are not UTF-8.** `parse` Markdown is **fixed**: it is now always
-  UTF-8 and exact. The rest was not changed. When standard output was set to `latin-1` or `cp1252`, `parse -f json` and
-  `extract --format json` stopped with `UnicodeEncodeError` on Hindi text, and so did the `extract` table. In a C locale
-  with Python's UTF-8 mode off, JSON worked, but the `extract` and `engines` tables stopped the same way. With Python's
-  default handling of the C locale, everything tried worked. Setting `PYTHONIOENCODING=utf-8` fixed all these cases, and
-  `parse --out FOLDER` always writes UTF-8. (`cp1252` is common for redirected output on Windows; these encodings were
-  only set by environment variables on Linux, and Windows was not tested. Seen during development, no result file saved.)
-- **`file_chains` is replaced, not merged.** Unlike `page_chains` and `timeouts` ([Configuration](#configuration)), a
-  `file_chains` entry in a file or a variable replaces the whole table, and a file type that is not in it has no
-  engines. Copy all the defaults you want to keep.
-- **`mixed: []` does not stop OCR on mixed pages.** For these pages the router also runs the `scanned` chain.
+- **Output on a terminal that is not UTF-8 is not all readable.** The command line no longer stops with
+  `UnicodeEncodeError` (**fixed**): JSON and Markdown are always written as UTF-8, and the tables show `?` for each
+  character the output encoding lacks. So a terminal that expects another encoding shows non-English text in JSON or
+  Markdown wrongly, and a table loses it: use `-f json` or `--out` to keep the text. The HTTP API's `/extract` still
+  answers HTTP 500 if the model returns half of a character pair; the command line now handles that. (Encodings were
+  set by environment variables on Linux; Windows was not tested. Seen during development, no result file saved.)
+- **`mixed: []` does not stop OCR on mixed pages.** For these pages the router also runs the `scanned` chain,
+  including the cloud engine if that chain has it and cloud is on.
 - OCR engines sometimes glue words together across wide gaps (seen during development, no result file saved). Grounding tolerates this, but the Markdown shows it.
 - Field extraction uses a small local model (`llama3.2:3b` by default) and has only been measured on small synthetic sets (invoices and drilling reports).
 - `.msg` (Outlook) attachment reading is not tested: this repo has no `.msg` sample file and no test for it.
