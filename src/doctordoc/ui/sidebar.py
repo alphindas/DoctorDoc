@@ -88,21 +88,14 @@ def _ocr_selector(report: list[dict[str, str]], local_only: bool) -> str | None:
 
 def _local_only_toggle(base: Config) -> bool:
     local_only = st.toggle(
-        "Local only (private)",
-        value=True,
-        key="local_only",
-        help="On: every page stays on this machine. Off: the cloud fallback may be used.",
+        "Local only (private)", value=True, key="local_only", help=service.CLOUD_PRIVACY_NOTE
     )
     if not local_only:
-        st.warning(
-            "Cloud fallback is ON. Pages that local engines cannot read may be sent as images "
-            f"to {base.cloud.base_url}. Do not use this for private documents.",
-            icon=":material/cloud_upload:",
-        )
-        if not base.cloud.api_key:
-            st.caption(
-                "No cloud API key is set in the config, so the cloud engine will be skipped."
-            )
+        st.warning(service.CLOUD_PRIVACY_NOTE, icon=":material/cloud_upload:")
+        st.caption(f"Cloud server: {base.cloud.base_url}")
+    llm_note = service.llm_privacy_note(base)
+    if llm_note:  # shown with the switch on or off
+        st.warning(llm_note, icon=":material/dns:")
     return local_only
 
 

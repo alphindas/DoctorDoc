@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import httpx
 import pytest
 import streamlit as st
 import yaml
@@ -88,9 +89,88 @@ def test_local_only_is_on_by_default_and_the_cloud_warning_appears_when_it_is_tu
     assert app.sidebar.toggle(key="local_only").value is True
     assert not app.sidebar.warning
     app.sidebar.toggle(key="local_only").set_value(False).run()
-    assert "leave" in str(app.sidebar.warning[0].value).lower() or "sent as images" in str(
-        app.sidebar.warning[0].value
+    assert [w.value for w in app.sidebar.warning] == [service.CLOUD_PRIVACY_NOTE]
+    app.sidebar.toggle(key="local_only").set_value(True).run()
+    assert not app.sidebar.warning
+
+
+def sidebar_words(at: AppTest) -> str:
+    toggle = at.sidebar.toggle(key="local_only")
+    return " ".join(
+        [
+            toggle.help,
+            *(w.value for w in at.sidebar.warning),
+            *(c.value for c in at.sidebar.caption),
+        ]
     )
+
+
+@pytest.mark.parametrize("api_key", ["", "synthetic-key"], ids=["no key", "with a key"])
+def test_the_sidebar_never_says_a_missing_key_stops_the_cloud(tmp_path, monkeypatch, api_key):
+    at = cloud_app(tmp_path, monkeypatch, {"cloud": {"api_key": api_key}})
+    assert at.sidebar.toggle(key="local_only").help == service.CLOUD_PRIVACY_NOTE
+    at.sidebar.toggle(key="local_only").set_value(False).run()
+    assert [w.value for w in at.sidebar.warning] == [service.CLOUD_PRIVACY_NOTE]
+    assert "will be skipped" not in sidebar_words(at)
+    assert "No cloud API key" not in sidebar_words(at)
+
+
+def cloud_app(tmp_path, monkeypatch, settings) -> AppTest:
+    """The UI with the settings given. The cloud address points at a closed port."""
+    data = {"gpu": "off", **settings}
+    data["cloud"] = {"base_url": "http://127.0.0.1:9/v1", **data.get("cloud", {})}
+    path = tmp_path / "cloud-ui.yaml"
+    path.write_text(yaml.safe_dump(data))
+    monkeypatch.setenv("DOCTORDOC_UI_CONFIG", str(path))
+    st.cache_resource.clear()
+    st.cache_data.clear()
+    at = AppTest.from_file(str(APP), default_timeout=120)
+    at.run()
+    return at
+
+
+@pytest.mark.parametrize("local_only", [False, True], ids=["Local only off", "Local only on"])
+def test_the_words_match_what_the_ui_sends(tmp_path, monkeypatch, local_only):
+    """With no API key and cloud.enabled false: the switch decides what is sent."""
+    sent = []
+
+    def record(url, **kwargs):
+        sent.append((url, kwargs["headers"]))
+        raise httpx.ConnectError("recorded, not sent")
+
+    monkeypatch.setattr(httpx, "post", record)
+    at = cloud_app(tmp_path, monkeypatch, {"cloud": {"enabled": False, "api_key": ""}})
+    at.sidebar.toggle(key="local_only").set_value(False).run()
+    at.sidebar.toggle(key="engine_cloud_vlm").set_value(True).run()  # in the Engines list
+    if local_only:
+        at.sidebar.toggle(key="local_only").set_value(True).run()
+    parse_examples(at, "invoice_digital.pdf")
+    open_tab(at, "Compare engines")
+    at.button(key="run_compare").click()
+    at.run()
+    assert not at.exception
+    if local_only:
+        assert sent == []
+    else:
+        assert sent == [("http://127.0.0.1:9/v1/chat/completions", {})]  # no key, and still sent
+
+
+@pytest.mark.parametrize(
+    "base_url, warns",
+    [("http://localhost:11434", False), ("http://models.example.com:11434", True)],
+    ids=["local model server", "another computer"],
+)
+def test_a_model_server_elsewhere_is_warned_about_with_local_only_on(
+    tmp_path, monkeypatch, base_url, warns
+):
+    def no_server(url, **kwargs):
+        raise httpx.ConnectError("no server in tests")
+
+    monkeypatch.setattr(httpx, "get", no_server)  # the model list: nothing is contacted
+    at = cloud_app(tmp_path, monkeypatch, {"llm": {"base_url": base_url}})
+    assert at.sidebar.toggle(key="local_only").value is True
+    expected = [service.REMOTE_LLM_NOTE] if warns else []
+    assert [w.value for w in at.sidebar.warning] == expected
 
 
 def test_parse_without_a_file_asks_for_one_and_does_not_crash(app):

@@ -5,6 +5,8 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
+import pytest
+
 import samples
 from doctordoc import service
 from doctordoc.config import Config
@@ -197,3 +199,48 @@ def test_split_warnings_picks_out_the_wrong_extension_warning():
 def test_file_too_big_message():
     assert service.file_too_big(10, Config()) is None
     assert "limit" in (service.file_too_big(300 * 1024 * 1024, Config()) or "")
+
+
+# ---------------------------------------------------------------------------- privacy words
+
+
+def test_the_cloud_note_says_a_missing_key_does_not_protect():
+    assert service.CLOUD_PRIVACY_NOTE == (
+        'Pages can be sent to the cloud server whenever "Local only" is off, even when no API key '
+        'is set. Turning "Local only" on is what keeps pages on this computer.'
+    )
+
+
+def test_local_only_off_turns_the_cloud_engine_on_even_without_a_key_or_cloud_enabled():
+    base = Config(cloud={"enabled": False, "api_key": ""})
+    for local_only, enabled in [(True, False), (False, True)]:
+        config = service.apply_settings(base, service.UiSettings(local_only=local_only))
+        assert config.cloud.enabled is enabled
+        engine = Router(config).engines["cloud_vlm"]
+        assert (engine.missing_reason() is None) is enabled  # the key plays no part
+
+
+def test_an_empty_cloud_address_keeps_the_cloud_off_whatever_the_switch_says():
+    """The advice in docs/deploy-demo.md."""
+    base = Config(cloud={"base_url": ""})
+    config = service.apply_settings(base, service.UiSettings(local_only=False))
+    assert Router(config).engines["cloud_vlm"].missing_reason() is not None
+
+
+@pytest.mark.parametrize(
+    "base_url, remote",
+    [
+        ("http://localhost:11434", False),
+        ("http://127.0.0.1:11434", False),
+        ("http://[::1]:8000/v1", False),
+        ("https://api.openai.com/v1", True),
+        ("http://192.168.1.20:11434", True),
+        ("http://localhost.example.com", True),
+        ("http://127.0.0.1@models.example.com", True),
+        ("http://[broken", True),
+        ("not an address", True),
+    ],
+)
+def test_the_model_server_note_appears_unless_the_server_is_surely_local(base_url, remote):
+    config = Config(llm={"base_url": base_url})
+    assert (service.llm_privacy_note(config) == service.REMOTE_LLM_NOTE) is remote

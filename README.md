@@ -76,20 +76,28 @@ keeps its default. To use no engines for a page kind or file type, write an empt
 The default chains for scanned and garbled pages and for images end with `cloud_vlm`, which runs only if
 `cloud.enabled` is true: **with cloud on, a page kind or file type you leave out can be sent to the cloud server**.
 
-**The cloud warning.** When the cloud engine is on, `parse`, `extract`, `ui` and the HTTP API log one warning at
-startup. It lists the page kinds and file types whose pages the chains could send, and how to prevent it. Using
-`parse()` from Python gives no warning, and the warning does not change which engines run.
+**Only keeping the cloud off protects your pages. A missing API key does not.** On the command line, in the HTTP API
+and in Python, "off" means `cloud.enabled: false`, the default. **In the web UI the "Local only" switch replaces that
+setting**, so "off" means leaving the switch on.
 
-- `cloud.enabled: false` stops all of it. To stop it for one entry, take `cloud_vlm` out of that chain. `[]` also
-  works, except for `mixed` (below), but then no engine reads that kind of page or file, not even a local one.
+**The cloud warning.** When the config turns the cloud engine on, `parse`, `extract`, `ui` and the HTTP API log one
+warning at startup. It lists the page kinds and file types whose pages the chains could send, and how to prevent it.
+`ui` gives no warning if the config leaves the cloud off, although the switch can turn it on later. Using `parse()`
+from Python gives no warning, and the warning does not change which engines run.
+
+- To stop it for one entry, take `cloud_vlm` out of that chain. `[]` also works, except for `mixed` (below), but then
+  no engine reads that kind of page or file, not even a local one.
 - The router never gives the cloud engine a digital PDF page or a file that is not a PDF or an image: the engine
   refuses them. (Compare engines, below, is different.)
 - **Mixed pages also use the `scanned` chain**, so `mixed: []` alone does not keep them off the cloud: take
   `cloud_vlm` out of the `scanned` chain too.
 - **An empty `cloud.api_key` does not stop pages being sent.** The page image is sent without a key, whether or not the
-  server then accepts it. (The web UI's sidebar says the cloud engine is skipped without a key. That is wrong.)
-- In the web UI, with "Local only" switched off, **Compare engines** runs the cloud engine on a PDF or image whatever
-  the chains say.
+  server then accepts it.
+- In the web UI, pages can be sent whenever "Local only" is off, whatever `cloud.enabled` says. In tests, nothing was
+  sent until `cloud_vlm` was also on in the sidebar's Engines list, or chosen as the OCR engine. **Do not rely on that
+  extra step.** With `cloud_vlm` on in the list, **Compare engines** runs it on a PDF or image whatever the chains say.
+  (Seen during development, no result file saved.)
+- An empty `cloud.base_url` (`base_url: ""`) makes the cloud engine unavailable, also in the web UI.
 
 ## How it works
 
@@ -130,10 +138,12 @@ written to a temporary folder, parsed, and deleted: nothing is stored. Four tabs
 - **Compare engines**: runs each installed engine alone on the same file and shows them side by
   side, with time and text-quality score, and marks the engine the router chose.
 
-The sidebar has the OCR engine (Auto, or force one), **Local only (private)** (on by default; turning
-it off allows the cloud fallback and shows a warning that pages would leave your machine), the
-local Ollama model, the mixed-page merge switch and an on/off list of engines. To host a small public
-demo see [docs/deploy-demo.md](docs/deploy-demo.md). The look is from
+The sidebar has the OCR engine (Auto, or force one), **Local only (private)** (on by default), the
+local Ollama model, the mixed-page merge switch and an on/off list of engines. **Pages can be sent to the cloud server
+whenever "Local only" is off, even when no API key is set. Turning "Local only" on is what keeps pages on this
+computer** (the one running DoctorDoc); the switch [replaces `cloud.enabled`](#configuration). It does not change where
+Extract sends the document's text, which is `llm.base_url`; the sidebar warns when that may be another computer.
+To host a small public demo see [docs/deploy-demo.md](docs/deploy-demo.md). The look is from
 [docs/design/mockup.png](docs/design/mockup.png), a design mockup (made-up data, not a screenshot).
 
 ## HTTP API
@@ -443,7 +453,8 @@ not in the document text (the model made it up): `page` and `source_text` are th
 6. RapidOCR and Tesseract first find **which way up** a page is. A page that already reads well (score 0.75 or more,
    `rotation_early_stop`) is read once; otherwise it is read at 0, 90, 180 and 270 degrees and the best angle is kept.
 7. Only one heavy model is kept in memory at a time, and it is released after each file.
-8. Cloud fallback (`cloud_vlm`) is **off by default**. If you switch it on, page images are sent to the server you configure.
+8. Cloud fallback (`cloud_vlm`) is **off by default**. If you switch it on, page images can be sent to `cloud.base_url`
+   (OpenAI's address unless you change it), even without an API key.
 
 ## Engines and licenses
 
