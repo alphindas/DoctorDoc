@@ -2,6 +2,8 @@
 quality_threshold: 0.55        # engine output below this score is rejected, next engine is tried
 gpu: auto                      # auto | on | off
 merge_mixed_pages: true        # mixed pages: also add text that only the losing engine found
+# THIS TURNS THE PARSE CACHE ON: each parsed document's text is kept in this folder until you delete
+# it. Remove the line to turn the cache off. (An empty value does not turn it off.)
 cache_dir: .cache/doctordoc    # parsed results kept on disk, keyed by file hash
 
 # Which engines to try, in order, for each kind of PDF page.

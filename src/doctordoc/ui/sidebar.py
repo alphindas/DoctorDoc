@@ -54,7 +54,7 @@ def _upload_box(base: Config):
         accept_multiple_files=True,
         key="uploads",
         label_visibility="collapsed",
-        help="Any file type. Files are read from a temporary folder and deleted afterwards.",
+        help=f"Any file type. {service.storage_note(base)}",
     )
     st.caption(
         f"Drop any file here: PDF, Word, Excel, scans, emails, ZIP. Up to {base.max_file_mb:g} MB each."
@@ -105,14 +105,17 @@ def _model_selector(base: Config) -> str | None:
     if names:
         default = names.index(llm.model) if llm.model in names else 0
         return st.selectbox(
-            "Model (local, for Extract)",
+            "Model (for Extract)",
             names,
             index=default,
             key="model",
-            help=f"Models found on your local server at {llm.base_url}.",
+            help=f"Models found on the model server at {llm.base_url}.",
         )
-    st.selectbox("Model (local, for Extract)", [llm.model], key="model", disabled=True)
-    st.caption(f"No local model server found at {llm.base_url}. Start Ollama to use Extract.")
+    st.selectbox("Model (for Extract)", [llm.model], key="model", disabled=True)
+    st.caption(
+        f"No model server found at {llm.base_url}. Start your model server (Ollama by default) "
+        "to use Extract."
+    )
     return llm.model
 
 

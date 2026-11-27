@@ -16,7 +16,7 @@ engines (native readers, pdf_text, **RapidOCR**) on a small CPU machine. No Olla
 | Cloud fallback | would send visitors' pages to a third party | only keeping it off protects them, and `cloud.enabled: false` is **not enough** in the web UI: see [Keeping the cloud off](#keeping-the-cloud-off) |
 | Ollama / Extract tab | there is no model server on a free host | the Extract tab shows "Cannot reach the LLM server". Leave it, or point `llm` at a hosted OpenAI-compatible server and keep the key in the host's secrets (then page text leaves the machine) |
 | Big uploads | memory | `max_file_mb: 10` in the demo config |
-| Private documents | strangers use it | say on the page that only non-sensitive files should be uploaded (files are processed in memory and a temp folder, then deleted; nothing is stored by DoctorDoc) |
+| Private documents | strangers use it | say on the page that only non-sensitive files should be uploaded (each upload goes to a temporary folder and that copy is deleted after parsing; parsed results stay in the app's memory. With the parse cache off, DoctorDoc keeps no copy on disk. The demo config has no `cache_dir` line, so **check that `DOCTORDOC_CACHE_DIR` is not set on the host**, or add `cache_dir: null`. See [what is kept on disk](../README.md#what-is-kept-on-disk)) |
 
 The demo config is `doctordoc.demo.yaml`; the app reads it from the environment variable
 `DOCTORDOC_UI_CONFIG`.

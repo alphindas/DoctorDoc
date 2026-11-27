@@ -99,6 +99,30 @@ from Python gives no warning, and the warning does not change which engines run.
   (Seen during development, no result file saved.)
 - An empty `cloud.base_url` (`base_url: ""`) makes the cloud engine unavailable, also in the web UI.
 
+### What is kept on disk
+
+- **Parse cache off (the default):** the web UI and the HTTP API write each upload to a temporary folder and delete it.
+  After a normal run, DoctorDoc keeps no copy of your documents or their text on disk. **If it is stopped or crashes
+  while parsing, the temporary copy can stay there** (`kill` and `kill -9` left it behind in a test).
+- **Parse cache on (`cache_dir` is set):** for each parsed file, also one inside a ZIP or email, a JSON file with its
+  name and text (OCR text too) is written to that folder, and **stays until you delete it**. This applies to the web
+  UI, the command line and Python, not to the HTTP API, which always turns the cache off. A relative folder starts
+  from the program's working folder; the web UI shows the full path.
+- **[doctordoc.example.yaml](doctordoc.example.yaml) turns the cache on** (`cache_dir: .cache/doctordoc`).
+- **To turn it off,** remove `cache_dir` from your config file and unset `DOCTORDOC_CACHE_DIR`. Writing
+  `cache_dir: null` in the config file also works, even with the variable set. **An empty value does not turn it
+  off:** with `DOCTORDOC_CACHE_DIR=` or `cache_dir: ""`, the cache files are written into the working folder. Turning
+  the cache off does not delete old files.
+- **Not covered by the above:** files you ask for (`--out`, downloads), and whatever a model server or cloud server
+  keeps of what it receives. Other software can write its own files: with the cache off, ONNX Runtime 1.32.0 (used by
+  RapidOCR) still wrote a device ID and a small database of records about the machine, in `~/.cache/Microsoft` and the
+  temporary folder. No document name or text was found in them as plain text. **Whether it sends these records
+  anywhere was not checked.**
+
+(Seen during development with synthetic files and the native readers, `pdf_text`, RapidOCR and Tesseract, by looking
+for new files in the home and temporary folders afterwards; no result file saved. Docling, MarkItDown and PaddleOCR-VL
+were not checked.)
+
 ## How it works
 
 ```mermaid
@@ -126,7 +150,8 @@ doctordoc ui                     # opens http://localhost:8501; pass --config my
 ```
 
 Pure Python (Streamlit), no JavaScript build. Upload one or many files, or a ZIP; every file is
-written to a temporary folder, parsed, and deleted: nothing is stored. Four tabs:
+written to a temporary folder, parsed, and deleted. With the parse cache off (the default), DoctorDoc keeps no copy;
+with it on, each document's text stays on disk ([what is kept](#what-is-kept-on-disk)). Four tabs:
 
 - **Parse**: detected type (and a warning if the extension lies), one chip per page (digital,
   scanned, mixed, garbled, blank) with page navigation, the page picture next to the extracted
@@ -139,7 +164,7 @@ written to a temporary folder, parsed, and deleted: nothing is stored. Four tabs
   side, with time and text-quality score, and marks the engine the router chose.
 
 The sidebar has the OCR engine (Auto, or force one), **Local only (private)** (on by default), the
-local Ollama model, the mixed-page merge switch and an on/off list of engines. **Pages can be sent to the cloud server
+model for Extract, the mixed-page merge switch and an on/off list of engines. **Pages can be sent to the cloud server
 whenever "Local only" is off, even when no API key is set. Turning "Local only" on is what keeps pages on this
 computer** (the one running DoctorDoc); the switch [replaces `cloud.enabled`](#configuration). It does not change where
 Extract sends the document's text, which is `llm.base_url`; the sidebar warns when that may be another computer.
@@ -333,9 +358,10 @@ Other errors have a body with one key, `detail`.
 - **No login, no HTTPS.** By default it listens on `127.0.0.1` only. `--host` with any other address prints a warning:
   anyone who can reach it can use it.
 - **No CORS headers**, so a web page from another site cannot read the replies in a normal browser.
-- **No storage.** Each upload is written to its own temporary folder, which is deleted when the request ends, also
-  after an error. The parse cache (`cache_dir`) is switched off even if your settings turn it on. If the process is
-  force-killed or the machine loses power, temporary files can be left behind.
+- **No stored copies.** Each upload is written to its own temporary folder, which is deleted when the request ends,
+  also after an error. The parse cache (`cache_dir`) is switched off even if your settings turn it on. If the process is
+  killed or the machine loses power, temporary files can be left behind. See also
+  [what is kept on disk](#what-is-kept-on-disk), including files that other software writes.
 - **Upload size** is capped by `max_file_mb` (default 200). The count is made while the upload arrives, and the whole
   request may be 64 KB larger to make room for the form around the file; the file itself is then checked exactly.
   The cap is on the upload, not on what it expands to: ZIP and email contents have their own limits, but a DOCX, XLSX

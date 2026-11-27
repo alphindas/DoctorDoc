@@ -81,7 +81,7 @@ def test_the_sidebar_has_the_controls_from_the_design(app):
     labels = [w.label for w in app.sidebar.selectbox] + [w.label for w in app.sidebar.toggle]
     assert "OCR engine" in labels and "Local only (private)" in labels
     assert "Merge mixed pages" in labels
-    assert any("Model" in label for label in labels)
+    assert "Model (for Extract)" in labels
     assert [b.label for b in app.sidebar.button] == ["Parse document"]
 
 
@@ -171,6 +171,9 @@ def test_a_model_server_elsewhere_is_warned_about_with_local_only_on(
     assert at.sidebar.toggle(key="local_only").value is True
     expected = [service.REMOTE_LLM_NOTE] if warns else []
     assert [w.value for w in at.sidebar.warning] == expected
+    # the label claims nothing about where the model is, and neither does the text under it
+    assert at.sidebar.selectbox(key="model").label == "Model (for Extract)"
+    assert not [c.value for c in at.sidebar.caption if "local model" in c.value.lower()]
 
 
 def test_parse_without_a_file_asks_for_one_and_does_not_crash(app):

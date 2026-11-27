@@ -75,7 +75,7 @@ def main() -> None:
     if entry is None:
         for number, tab in enumerate(tabs):
             with tab:
-                views.empty_state(str(number))
+                views.empty_state(str(number), service.storage_note(config))
         return
     with tabs[0]:
         if tabs[0].open:

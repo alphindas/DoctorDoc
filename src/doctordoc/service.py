@@ -88,6 +88,22 @@ def llm_privacy_note(config: Config) -> str | None:
     return None if local else REMOTE_LLM_NOTE
 
 
+def storage_note(config: Config) -> str:
+    """What a front end says about documents on disk. It only describes the settings."""
+    if config.cache_dir is not None:  # also "" in a file or variable: that means this folder
+        folder = Path(config.cache_dir).resolve()
+        return (
+            "The parse cache is ON: a file with each parsed document's text is kept in "
+            f"`{folder}` until you delete it. To turn the cache off, remove cache_dir from the "
+            "config file and unset DOCTORDOC_CACHE_DIR (an empty value does not turn it off)."
+        )
+    return (
+        "The parse cache is off. Uploads go to a temporary folder and are deleted after parsing, "
+        "and DoctorDoc keeps no other copy of them or their text on disk. If it is stopped or "
+        "crashes while parsing, the temporary copy can stay there."
+    )
+
+
 def config_to_json(config: Config) -> str:
     """A string that identifies a config (used as a cache key by front ends)."""
     return config.model_dump_json()
@@ -115,8 +131,9 @@ def parse_uploads(
 ) -> list[Document]:
     """Parse uploaded files. Each is written to a temporary folder, parsed, and deleted.
 
-    Nothing is kept on disk afterwards. A bad file gives a Document with `.error` set; it
-    never raises, and it never stops the other files.
+    If config.cache_dir is set, the parsed result, with the document's text, is also written to
+    that folder and stays there. A bad file gives a Document with `.error` set; it never
+    raises, and it never stops the other files.
     """
     router = Router(config)
     documents: list[Document] = []

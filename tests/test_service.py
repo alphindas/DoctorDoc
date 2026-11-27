@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -244,3 +245,31 @@ def test_an_empty_cloud_address_keeps_the_cloud_off_whatever_the_switch_says():
 def test_the_model_server_note_appears_unless_the_server_is_surely_local(base_url, remote):
     config = Config(llm={"base_url": base_url})
     assert (service.llm_privacy_note(config) == service.REMOTE_LLM_NOTE) is remote
+
+
+# ---------------------------------------------------------------------------- storage words
+
+
+@pytest.mark.parametrize("cache", [False, True], ids=["cache off", "cache on"])
+def test_the_storage_note_says_what_really_stays_on_disk(tmp_path, monkeypatch, cache):
+    temp, work = tmp_path / "temp", tmp_path / "work"
+    temp.mkdir()
+    work.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp))
+    monkeypatch.chdir(work)
+    config = Config(gpu="off", cache_dir="my-cache" if cache else None)
+
+    [doc] = service.parse_uploads([("note.txt", b"synthetic marker words")], config)
+
+    assert doc.error is None
+    left = [p for p in tmp_path.rglob("*") if p.is_file()]
+    kept = [p for p in left if b"synthetic marker words" in p.read_bytes()]
+    note = service.storage_note(config)
+    if cache:
+        assert "The parse cache is ON" in note and f"`{work / 'my-cache'}`" in note
+        assert "remove cache_dir" in note and "unset DOCTORDOC_CACHE_DIR" in note
+        assert kept == left and [p.parent for p in kept] == [work / "my-cache"]
+    else:
+        assert "The parse cache is off" in note and "keeps no other copy" in note
+        assert "stopped or crashes" in note and "Nothing is stored" not in note
+        assert left == []
