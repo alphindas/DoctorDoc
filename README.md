@@ -750,8 +750,24 @@ Ideas that are **not built**:
 
 ## Screenshots
 
-_The web UI exists (`doctordoc ui`, described [above](#web-ui-doctordoc-ui)). Screenshots are still to be added:
-Parse tab, Router log, Extract tab, Compare engines._
+These are real screenshots of the running UI (`doctordoc ui`, described [above](#web-ui-doctordoc-ui)), taken with
+[examples/invoice_scanned.pdf](examples/invoice_scanned.pdf).
+
+![Parse tab of the DoctorDoc web UI](docs/images/ui-parse.png)
+
+_Parse tab: `examples/invoice_scanned.pdf` is detected as scanned and shown beside the text that RapidOCR read from it._
+
+![Router log tab of the DoctorDoc web UI](docs/images/ui-router-log.png)
+
+_Router log: why RapidOCR read `examples/invoice_scanned.pdf`, and why PaddleOCR-VL was skipped (not installed)._
+
+![Extract tab of the DoctorDoc web UI](docs/images/ui-extract.png)
+
+_Extract tab: invoice fields from `examples/invoice_scanned.pdf` with confidence, grounding and page; `currency` needs review._
+
+![Compare engines tab of the DoctorDoc web UI](docs/images/ui-compare.png)
+
+_Compare engines on `examples/invoice_scanned.pdf`: both OCR engines score 1.00, yet Tesseract returned 190 characters, RapidOCR 328._
 
 ## Known limitations
 
