@@ -30,7 +30,8 @@ CLOUD_ENGINES = ("cloud_vlm",)
 # What a front end says about privacy. Keep it true: the cloud engine needs no API key to send.
 CLOUD_PRIVACY_NOTE = (
     'Pages can be sent to the cloud server whenever "Local only" is off, even when no API key is '
-    'set. Turning "Local only" on is what keeps pages on this computer.'
+    'set. Turning "Local only" on stops that: no cloud OCR. It does not control where Extract '
+    "sends text."
 )
 REMOTE_LLM_NOTE = (
     "Extract sends the document's text to the model server in llm.base_url, which may not be "

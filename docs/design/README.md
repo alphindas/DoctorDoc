@@ -6,6 +6,7 @@ All the data in it is made up (company, invoice, numbers), and it shows things t
 does differently on purpose:
 
 - the model list in the real UI shows the models on your **model server** (by default Ollama on this computer);
+- the real switch is labelled **Local only (no cloud OCR)**, not "Local only (private)": it only turns cloud OCR off;
 - a rejected engine in the router log is **amber** with its reason, never a green tick;
 - the real UI shows **one chip per page** with page navigation;
 - the real UI has an **Output panel** (rendered Markdown, raw Markdown, JSON, tables, downloads).

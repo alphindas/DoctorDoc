@@ -279,7 +279,7 @@ def _raise_for_status(response: httpx.Response) -> None:
 
 
 def list_models(config: LLMConfig, timeout: float = 3.0) -> list[str]:
-    """Names of the models the local server has (Ollama: /api/tags, OpenAI-style: /models).
+    """Names of the models on the server in llm.base_url (Ollama: /api/tags, OpenAI-style: /models).
 
     Raises LLMError if the server cannot be reached. Used by the UI model dropdown.
     """

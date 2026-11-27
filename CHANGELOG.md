@@ -12,8 +12,8 @@ history and the [README](README.md), which has the details and the limits.
   checks the text quality, falls back when needed and keeps a decision log. Engines: native readers, `pdf_text`,
   Docling, MarkItDown, RapidOCR, Tesseract, an optional cloud vision model (off by default) and PaddleOCR-VL
   (experimental).
-- Field extraction with a local LLM: every value is looked for in the document text, validation rules run, each field
-  gets a confidence, and doubtful fields go to `needs_review`.
+- Field extraction with an LLM (by default Ollama on your computer): every value is looked for in the document text,
+  validation rules run, each field gets a confidence, and doubtful fields go to `needs_review`.
 - A web UI (`doctordoc ui`) with engine comparison, example documents, a demo configuration and deploy notes.
 - A synthetic benchmark with rotated and photo samples, a quick mode and saved results.
 - A local HTTP API (`doctordoc api`) with `/health`, `/engines`, `/parse` and `/extract`. Uploads over `max_file_mb`
@@ -78,3 +78,4 @@ history and the [README](README.md), which has the details and the limits.
 - The hint printed by `doctordoc ui` said `doctordoc` instead of `doctordoc[ui]`.
 - The web UI said the cloud engine is skipped without an API key. It is not: only keeping the cloud off protects you.
 - The web UI and docs said nothing is stored, even with the parse cache on, and called any Extract model "local".
+- The "Local only (private)" switch is now "Local only (no cloud OCR)", and `extract --help` no longer says local LLM.

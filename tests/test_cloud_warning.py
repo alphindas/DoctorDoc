@@ -206,6 +206,7 @@ def test_the_ui_command_warns_and_says_when_it_applies(monkeypatch, caplog, clou
     result, warned = run_cli(caplog, "ui", "-c", cloud_file)
     assert result.exit_code == 0 and len(warned) == 1
     assert 'the "Local only" switch decides this, not cloud.enabled' in warned[0].getMessage()
+    assert "this computer" not in warned[0].getMessage()  # the switch does not control Extract
 
 
 def test_the_api_warns_once_when_it_is_built_not_per_request(caplog):

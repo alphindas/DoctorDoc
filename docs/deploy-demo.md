@@ -42,8 +42,8 @@ without one.
 
   With this, `cloud_vlm` could not be switched on or chosen, even with "Local only" off. **The demo config in this
   repository does not have the `base_url` line.**
-- The sidebar says "Local only" keeps pages on "this computer". In a hosted demo that is **your server**: a visitor's
-  file is uploaded to it.
+- "Local only" only turns cloud OCR off. It does not keep a visitor's file on their own computer: in a hosted demo
+  the file is uploaded to **your server**. It does not control where Extract sends text (`llm.base_url`) either.
 
 (Seen during development with Streamlit's test runner on one machine, no result file saved. In Chromium, only the
 path through the Engines list and Compare engines was repeated.)

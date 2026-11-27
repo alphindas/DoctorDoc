@@ -285,7 +285,8 @@ def extract(
     ] = None,  # noqa: UP007
     config_path: ConfigOption = None,
 ) -> None:
-    """Extract fields (with proof of where each came from) using a local LLM."""
+    """Extract fields (with proof of where each came from) using the model server in
+    llm.base_url (Ollama on your computer by default)."""
     from doctordoc.cloud_warning import warn_about_cloud
     from doctordoc.extract import extract as run_extract
 

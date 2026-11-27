@@ -208,7 +208,8 @@ def test_file_too_big_message():
 def test_the_cloud_note_says_a_missing_key_does_not_protect():
     assert service.CLOUD_PRIVACY_NOTE == (
         'Pages can be sent to the cloud server whenever "Local only" is off, even when no API key '
-        'is set. Turning "Local only" on is what keeps pages on this computer.'
+        'is set. Turning "Local only" on stops that: no cloud OCR. It does not control where '
+        "Extract sends text."
     )
 
 
