@@ -79,7 +79,7 @@ def test_the_empty_page_shows_the_four_tabs_and_a_hint(app):
 
 def test_the_sidebar_has_the_controls_from_the_design(app):
     labels = [w.label for w in app.sidebar.selectbox] + [w.label for w in app.sidebar.toggle]
-    assert "OCR engine" in labels and "Local only (private)" in labels
+    assert "OCR engine" in labels and "Local only (no cloud OCR)" in labels
     assert "Merge mixed pages" in labels
     assert "Model (for Extract)" in labels
     assert [b.label for b in app.sidebar.button] == ["Parse document"]

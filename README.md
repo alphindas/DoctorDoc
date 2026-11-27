@@ -187,11 +187,11 @@ with it on, each document's text stays on disk ([what is kept](#what-is-kept-on-
 - **Compare engines**: runs each installed engine alone on the same file and shows them side by
   side, with time and text-quality score, and marks the engine the router chose.
 
-The sidebar has the OCR engine (Auto, or force one), **Local only (private)** (on by default), the
+The sidebar has the OCR engine (Auto, or force one), **Local only (no cloud OCR)** (on by default), the
 model for Extract, the mixed-page merge switch and an on/off list of engines. **Pages can be sent to the cloud server
-whenever "Local only" is off, even when no API key is set. Turning "Local only" on is what keeps pages on this
-computer** (the one running DoctorDoc); the switch [replaces `cloud.enabled`](#configuration). It does not change where
-Extract sends the document's text, which is `llm.base_url`; the sidebar warns when that may be another computer.
+whenever "Local only" is off, even when no API key is set. Turning "Local only" on stops that: no cloud OCR.** The
+switch [replaces `cloud.enabled`](#configuration). It does not control where Extract sends the document's text, which
+is `llm.base_url`; the sidebar warns when that may be another computer.
 To host a small public demo see [docs/deploy-demo.md](docs/deploy-demo.md). The look is from
 [docs/design/mockup.png](docs/design/mockup.png), a design mockup (made-up data, not a screenshot).
 

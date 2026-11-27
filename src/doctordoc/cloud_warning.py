@@ -15,9 +15,9 @@ from doctordoc.models import PageKind
 log = logging.getLogger("doctordoc.cloud")
 
 UI_NOTE = (
-    ' In the web UI the "Local only" switch decides this, not cloud.enabled: keep it on to keep '
-    "pages on this computer. With it off and cloud_vlm switched on in the Engines list, the "
-    "Compare engines tab runs the cloud engine whatever the chains say."
+    ' In the web UI the "Local only" switch decides this, not cloud.enabled: keep it on to stop '
+    "pages going to the cloud server. With it off and cloud_vlm switched on in the Engines list, "
+    "the Compare engines tab runs the cloud engine whatever the chains say."
 )
 
 

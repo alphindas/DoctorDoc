@@ -73,6 +73,17 @@ def test_engines_command_lists_every_engine():
         assert name in result.output
 
 
+def test_the_extract_help_does_not_call_the_model_local(monkeypatch):
+    from doctordoc import cli
+
+    monkeypatch.setattr(cli.out, "_width", 200)
+    result = runner.invoke(app, ["extract", "--help"], env={"COLUMNS": "200"})
+    shown = " ".join(result.output.split())
+    assert result.exit_code == 0
+    assert "using the model server in llm.base_url (Ollama on your computer by default)." in shown
+    assert "local LLM" not in shown
+
+
 def test_paddle_result_mapping():
     res = {
         "parsing_res_list": [

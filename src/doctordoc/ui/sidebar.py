@@ -88,7 +88,7 @@ def _ocr_selector(report: list[dict[str, str]], local_only: bool) -> str | None:
 
 def _local_only_toggle(base: Config) -> bool:
     local_only = st.toggle(
-        "Local only (private)", value=True, key="local_only", help=service.CLOUD_PRIVACY_NOTE
+        "Local only (no cloud OCR)", value=True, key="local_only", help=service.CLOUD_PRIVACY_NOTE
     )
     if not local_only:
         st.warning(service.CLOUD_PRIVACY_NOTE, icon=":material/cloud_upload:")

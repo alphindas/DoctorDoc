@@ -78,3 +78,4 @@ history and the [README](README.md), which has the details and the limits.
 - The hint printed by `doctordoc ui` said `doctordoc` instead of `doctordoc[ui]`.
 - The web UI said the cloud engine is skipped without an API key. It is not: only keeping the cloud off protects you.
 - The web UI and docs said nothing is stored, even with the parse cache on, and called any Extract model "local".
+- The "Local only (private)" switch is now "Local only (no cloud OCR)", and `extract --help` no longer says local LLM.
